@@ -1,0 +1,52 @@
+HMM Revive kit @VERSION@
+========================
+Jogue Heavy Metal Machines de novo, num servidor privado rodando no PC de um de vocês. Grátis, privado e não oficial.
+Este kit não contém arquivos do jogo; ele cria uma cópia modificada da SUA instalação da Steam.
+(English: see README.txt)
+Novidades desta versão: CHANGELOG.txt (em inglês)
+
+Todo mundo precisa de
+  1. Heavy Metal Machines instalado pela Steam (precisa estar na sua biblioteca).
+  2. Tailscale (https://tailscale.com/download), instalado e logado com qualquer conta.
+
+Uma vez só
+  - Descompacte esta pasta em qualquer lugar. De preferência no mesmo disco do jogo (não gasta espaço extra).
+    O caminho da pasta não pode ter acentos nem letras especiais: se seu usuário do Windows tem (ex.: João),
+    C:\Users\<nome>\Downloads faz o jogo fechar; use algo como C:\HMM-Revive.
+  - Clique duas vezes em setup.bat. Ele encontra o jogo e cria uma cópia modificada em .\instance.
+    Sua instalação da Steam não é alterada.
+
+JOGADORES
+  - Aceite o link de convite do Tailscale que o host te mandar (uma vez só). Não precisa se o host te passar um
+    endereço público de relay (um servidor que repassa o jogo para o host): aí você nem precisa do Tailscale, é só digitar
+    esse endereço no play.bat.
+  - Quando o host avisar que o servidor está no ar: clique duas vezes em play.bat e digite o IP do Tailscale
+    do host (100.x.y.z) ou o endereço do relay, seu nome e um carro. As respostas ficam salvas; da próxima vez é só apertar Enter.
+  - "Exit game" fecha o jogo. Para a próxima partida, o host reinicia o servidor e você roda play.bat de novo.
+  - Na partida, digite /cars no chat para ver os carros e /car <nome> para trocar de carro
+    (a troca acontece enquanto você está morto ou entre os rounds).
+
+HOST (uma pessoa, num PC que fica ligado durante a partida)
+  Uma vez só:
+  - Compartilhe seu PC com cada jogador: https://login.tailscale.com/admin/machines > menu "..." do seu PC >
+    Share... > mande um link de convite para cada jogador. Eles veem só este PC, nenhum outro seu.
+  - Deixe eles acessarem só a porta do jogo: https://login.tailscale.com/admin/acls > troque a seção "grants"
+    por esta abaixo e salve.
+        "grants": [
+            { "src": ["autogroup:member"], "dst": ["*"], "ip": ["*"] },
+            { "src": ["autogroup:shared"], "dst": ["*"], "ip": ["udp:9696"] },
+        ],
+    A primeira linha mantém acesso total para você e seus aparelhos; a segunda deixa os jogadores acessarem
+    só a UDP 9696 (o jogo) no PC que você compartilhou.
+  - Na primeira vez, host.bat oferece criar uma regra no Firewall do Windows (UDP 9696, só endereços do
+    Tailscale). Responda y e aceite o pedido de administrador, senão ninguém consegue entrar.
+  Toda partida:
+  - Clique duas vezes em host.bat e escolha a arena, quantos jogadores humanos e quantos bots. Ele mostra seu
+    IP do Tailscale: mande para os jogadores. A partida começa quando todos os humanos entrarem.
+  - host.bat oferece abrir o seu jogo também. A partida é sempre de 3 pontos.
+  - Depois da partida, rode host.bat de novo para outra. stop.bat fecha o servidor e o jogo.
+  - Até 8 carros por partida (4 por time). Os humanos alternam Azul/Vermelho na ordem em que entram, a não ser
+    que você escolha "todos os humanos no mesmo time" (aí até 4 humanos contra bots).
+
+Deu problema? Diga sua versão (primeira linha da janela do setup/play/host) e mande o arquivo mais novo instance\hmmrevive-client-*.log (jogadores) ou
+instance\hmmrevive-server-9696.log e instance\server_unity_9696.log (host) para quem te passou este kit.

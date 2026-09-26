@@ -1,0 +1,20 @@
+# Hoplon's code/assets: never commit
+decompiled/
+game_backup/
+*.dll
+*.exe
+# local
+__pycache__/
+*.pyc
+logs/
+.venv/
+.idea/
+instance/
+instance-*/
+build/
+bin/
+obj/
+# regenerable dumps derived from game data (tools/*.py)
+notes/_*.txt
+
+launcher/settings.json

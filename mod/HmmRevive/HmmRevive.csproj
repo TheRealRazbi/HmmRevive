@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mod loaded into HMM's Unity 2018.4 legacy Mono runtime (.NET 3.5 profile). -->
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>HmmRevive</AssemblyName>
+    <GameManaged Condition="'$(GameManaged)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Heavy Metal Machines\HMM_Data\Managed</GameManaged>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Don't bake the build machine's folder (user name) into the DLL's PDB path and stack traces. -->
+    <!-- Release number from the repo's VERSION file (MAJOR.MINOR); logged at startup, read by the kit scripts. -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\VERSION').Trim())</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile against the game's own assemblies (never copied to output, never committed). -->
+    <Reference Include="$(GameManaged)\Assembly-CSharp-firstpass.dll;$(GameManaged)\HeavyMetalMachines*.dll;$(GameManaged)\Hoplon*.dll;$(GameManaged)\ClientAPI*.dll;$(GameManaged)\Swordfish*.dll;$(GameManaged)\UnityEngine*.dll;$(GameManaged)\UniRx.dll;$(GameManaged)\Loading.Common.dll" Private="false" ExternallyResolved="true" />
+  </ItemGroup>
+</Project>

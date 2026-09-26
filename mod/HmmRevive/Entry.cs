@@ -1,0 +1,171 @@
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using UnityEngine;
+
+namespace HmmRevive
+{
+    /// <summary>Called first thing from Infra.PreStart.Awake (IL-injected by tools/Patcher).</summary>
+    public static class Entry
+    {
+        private static bool _initialized;
+
+        public static bool ServerMode { get; private set; }
+
+        /// <summary>Running without a GPU device (-nographics).</summary>
+        public static bool Headless { get; private set; }
+
+        /// <summary>No audio output (FMOD NOSOUND). For background test clients.</summary>
+        public static bool Mute { get; private set; }
+
+        /// <summary>Points needed to win (--hmmrevive-score=N), 0 = arena default (3). Set it on server and clients.</summary>
+        public static int ScoreTarget { get; private set; }
+
+        /// <summary>Client: car to play (--hmmrevive-car=NAME|ID), sent to the server with the login. null = slot default.</summary>
+        public static string Car { get; private set; }
+
+        /// <summary>Server test mode (--hmmrevive-chaos): every car switches to a random one on each death and each round.</summary>
+        public static bool Chaos { get; private set; }
+
+        /// <summary>Chaos only picks from these car ids (--hmmrevive-chaos-cars=8,7), e.g. to repeat one swap pair. null = any car.</summary>
+        public static int[] ChaosCars { get; private set; }
+
+        /// <summary>Server: bot AI level per team (--hmmrevive-difficulty-red=easy|medium|hard, same for -blue).
+        /// Invalid = the game's own choice (MMR tier table of the arena).</summary>
+        public static HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty RedBotDifficulty { get; private set; }
+        public static HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty BluBotDifficulty { get; private set; }
+
+        /// <summary>Server: out-of-combat repair (--hmmrevive-repair=DELAY,PERCENT or =off). A car that took no damage for
+        /// RepairDelay seconds repairs RepairPercentPerSecond % of its max HP per second. RepairDelay &lt; 0 = off.</summary>
+        public static float RepairDelay { get; private set; } = 5f;
+        public static float RepairPercentPerSecond { get; private set; } = 5f;
+
+        /// <summary>Client test aid (--hmmrevive-autochat="/cars;/car wildfire"): chat lines sent once, 3 s into the match.</summary>
+        public static string[] AutoChat { get; private set; }
+
+        // Clients got the match server's RSA public key from Swordfish at login, and servers got the private key.
+        // Without Swordfish the client spins forever in LidgrenNetClient.SendCipherKeyToRemotePeer. Hoplon shipped a
+        // test key pair for offline use (SfNetConfiguration.AddTestCryptoKeys); install it on both sides.
+        private static void InstallTestCryptoKeys()
+        {
+            var cfg = new Swordfish.Network.Impl.SfNetConfiguration(null);
+            cfg.AddTestCryptoKeys();
+            if (Swordfish.Network.Security.CryptographyKeyProvider.ServerPublicKey == null)
+                Swordfish.Network.Security.CryptographyKeyProvider.ServerPublicKey = cfg.PublicKey;
+            if (Swordfish.Network.Security.CryptographyKeyProvider.ServerPrivateKey == null)
+                Swordfish.Network.Security.CryptographyKeyProvider.ServerPrivateKey = cfg.PrivateKey;
+        }
+
+        // -batchmode clients still open a blank (white) window, and Unity ignores a hidden start. Hide our own windows.
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        public static void HideOwnWindows()
+        {
+            if (ServerMode || !Array.Exists(Environment.GetCommandLineArgs(), a => a.Equals("-batchmode", StringComparison.OrdinalIgnoreCase))) return;
+            uint self = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+            EnumWindows((h, _) =>
+            {
+                uint pid;
+                GetWindowThreadProcessId(h, out pid);
+                if (pid == self) ShowWindow(h, 0); // SW_HIDE
+                return true;
+            }, IntPtr.Zero);
+        }
+
+        private static HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty ParseDifficulty(string[] args, string prefix)
+        {
+            string a = Array.Find(args, x => x.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            if (a == null) return HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty.Invalid;
+            switch (a.Substring(prefix.Length).Trim('"', '\'', ' ').ToLowerInvariant())
+            {
+                case "easy": return HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty.Easy;
+                case "medium": return HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty.Medium;
+                case "hard": return HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty.Hard;
+                default: return HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty.Invalid; // "auto"
+            }
+        }
+
+        // Release number (MAJOR.MINOR) from the repo's VERSION file, via the assembly version (HmmRevive.csproj).
+        public static string Version
+        {
+            get { Version v = typeof(Entry).Assembly.GetName().Version; return v.Major + "." + v.Minor; }
+        }
+
+        public static void Init()
+        {
+            if (_initialized) return;
+            _initialized = true;
+            string[] args = Environment.GetCommandLineArgs();
+            ServerMode = Array.Exists(args, a => a.Equals("--hmmrevive-server", StringComparison.OrdinalIgnoreCase));
+            Headless = Array.Exists(args, a => a.Equals("-nographics", StringComparison.OrdinalIgnoreCase));
+            string score = Array.Find(args, a => a.StartsWith("--hmmrevive-score=", StringComparison.OrdinalIgnoreCase));
+            if (score != null) ScoreTarget = int.Parse(score.Substring("--hmmrevive-score=".Length));
+            string car = Array.Find(args, a => a.StartsWith("--hmmrevive-car=", StringComparison.OrdinalIgnoreCase));
+            if (car != null && car.Length > "--hmmrevive-car=".Length) Car = car.Substring("--hmmrevive-car=".Length).Trim('"', '\'', ' ');
+            Chaos = Array.Exists(args, a => a.Equals("--hmmrevive-chaos", StringComparison.OrdinalIgnoreCase));
+            string chaosCars = Array.Find(args, a => a.StartsWith("--hmmrevive-chaos-cars=", StringComparison.OrdinalIgnoreCase));
+            if (chaosCars != null)
+            {
+                Chaos = true;
+                ChaosCars = Array.ConvertAll(chaosCars.Substring("--hmmrevive-chaos-cars=".Length).Split(','), int.Parse);
+            }
+            string chat = Array.Find(args, a => a.StartsWith("--hmmrevive-autochat=", StringComparison.OrdinalIgnoreCase));
+            if (chat != null) AutoChat = chat.Substring("--hmmrevive-autochat=".Length).Trim('"', '\'').Split(';');
+            string repair = Array.Find(args, a => a.StartsWith("--hmmrevive-repair=", StringComparison.OrdinalIgnoreCase));
+            if (repair != null)
+            {
+                string[] v = repair.Substring("--hmmrevive-repair=".Length).Trim('"', '\'', ' ').Split(',');
+                if (v[0].Equals("off", StringComparison.OrdinalIgnoreCase)) RepairDelay = -1f;
+                else
+                {
+                    RepairDelay = float.Parse(v[0], System.Globalization.CultureInfo.InvariantCulture);
+                    if (v.Length > 1) RepairPercentPerSecond = float.Parse(v[1], System.Globalization.CultureInfo.InvariantCulture);
+                }
+            }
+            RedBotDifficulty = ParseDifficulty(args, "--hmmrevive-difficulty-red=");
+            BluBotDifficulty = ParseDifficulty(args, "--hmmrevive-difficulty-blue=");
+            Mute = ServerMode || Array.Exists(args, a => a.Equals("--hmmrevive-mute", StringComparison.OrdinalIgnoreCase));
+            Application.logMessageReceived += (msg, stack, type) =>
+            {
+                if (type == LogType.Exception) Log.Error("unity exception: " + msg + "\n" + stack);
+            };
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
+            InstallTestCryptoKeys();
+            HideOwnWindows();
+            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Chaos={Chaos} Repair={RepairDelay}s/{RepairPercentPerSecond}% Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
+        }
+    }
+
+    public static class Log
+    {
+        // hmmrevive-server-<port>.log / hmmrevive-client-<pid>.log next to HMM.exe (per port so parallel servers don't mix)
+        private static string _filePath;
+
+        private static string FilePath => _filePath ?? (_filePath = Path.Combine(
+            Path.GetDirectoryName(Application.dataPath) ?? ".",
+            Entry.ServerMode ? $"hmmrevive-server-{ServerPort()}.log" : $"hmmrevive-client-{System.Diagnostics.Process.GetCurrentProcess().Id}.log"));
+
+        private static readonly object Gate = new object();
+
+        private static string ServerPort()
+        {
+            string port = Array.Find(Environment.GetCommandLineArgs(), a => a.StartsWith("Port=", StringComparison.OrdinalIgnoreCase));
+            return port != null ? port.Substring("Port=".Length) : "9696";
+        }
+
+        public static void Info(string msg) => Write("INFO", msg);
+        public static void Error(string msg) => Write("ERROR", msg);
+
+        private static void Write(string level, string msg)
+        {
+            string line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {msg}";
+            lock (Gate)
+            {
+                try { File.AppendAllText(FilePath, line + Environment.NewLine); } catch { }
+            }
+        }
+    }
+}
