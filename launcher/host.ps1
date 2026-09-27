@@ -26,15 +26,20 @@ else { $bluName = "Blue team bots"; $redName = "Red team bots" }
 Write-Host ""
 $bluBots = Ask-Number $bluName $s.BluBots ([int]($blueHumans -eq 0)) (4 - $blueHumans)
 $bluDiff = if ($bluBots -gt 0) { Ask-Difficulty "  their difficulty" $s.BluDifficulty } else { $s.BluDifficulty }
+$bluCars = if ($bluBots -gt 0) { Ask-BotCars "  their cars" $s.BluBotCars (Join-Path $PSScriptRoot "skins.txt") } else { $s.BluBotCars }
 $redBots = Ask-Number $redName $s.RedBots ([int]($redHumans -eq 0)) (4 - $redHumans)
 $redDiff = if ($redBots -gt 0) { Ask-Difficulty "  their difficulty" $s.RedDifficulty } else { $s.RedDifficulty }
+$redCars = if ($redBots -gt 0) { Ask-BotCars "  their cars" $s.RedBotCars (Join-Path $PSScriptRoot "skins.txt") } else { $s.RedBotCars }
 
 $params = @{ Players = $humans; Arena = $arena; RedBots = $redBots; BluBots = $bluBots; RedDifficulty = $redDiff; BluDifficulty = $bluDiff }
 if ($same -eq "y" -and $humans -gt 1) { $params.SameTeam = $true }
+if ($bluCars -ne "default") { $params.BluBotCars = $bluCars }
+if ($redCars -ne "default") { $params.RedBotCars = $redCars }
 if ($score -ne 3) { $params.Score = $score }
 
 $s.Arena = $arena; $s.Humans = $humans; $s.SameTeam = $same; $s.Score = $score
 $s.BluBots = $bluBots; $s.RedBots = $redBots; $s.BluDifficulty = $bluDiff; $s.RedDifficulty = $redDiff
+$s.BluBotCars = $bluCars; $s.RedBotCars = $redCars
 Save-Settings $s
 
 & (Join-Path $Repo "tools\run_server.ps1") @params

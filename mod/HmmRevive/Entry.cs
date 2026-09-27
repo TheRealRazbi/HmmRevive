@@ -24,6 +24,14 @@ namespace HmmRevive
         /// <summary>Client: car to play (--hmmrevive-car=NAME|ID), sent to the server with the login. null = slot default.</summary>
         public static string Car { get; private set; }
 
+        /// <summary>Client: skin to wear (--hmmrevive-skin=NUMBER|NAME|random), sent with the login like the car. null = default skin.</summary>
+        public static string Skin { get; private set; }
+
+        /// <summary>Server: bot cars per team in slot order (--hmmrevive-bot-cars-red=6,wildfire,random, same for -blue).
+        /// null = the game's slot defaults.</summary>
+        public static string[] RedBotCars { get; private set; }
+        public static string[] BluBotCars { get; private set; }
+
         /// <summary>Server test mode (--hmmrevive-chaos): every car switches to a random one on each death and each round.</summary>
         public static bool Chaos { get; private set; }
 
@@ -38,7 +46,10 @@ namespace HmmRevive
         /// <summary>Server: out-of-combat repair (--hmmrevive-repair=DELAY,PERCENT or =off). A car that took no damage for
         /// RepairDelay seconds repairs RepairPercentPerSecond % of its max HP per second. RepairDelay &lt; 0 = off.</summary>
         public static float RepairDelay { get; private set; } = 5f;
-        public static float RepairPercentPerSecond { get; private set; } = 5f;
+        public static float RepairPercentPerSecond { get; private set; } = 7f;
+
+        /// <summary>Client test aid (--hmmrevive-shots=N): N off-screen pictures of the match, see TestShots.</summary>
+        public static int Shots { get; private set; }
 
         /// <summary>Client test aid (--hmmrevive-autochat="/cars;/car wildfire"): chat lines sent once, 3 s into the match.</summary>
         public static string[] AutoChat { get; private set; }
@@ -88,11 +99,23 @@ namespace HmmRevive
             }
         }
 
+        // "--prefix=a,b,c" -> {"a","b","c"}; null when absent, empty or "default".
+        private static string[] ParseList(string[] args, string prefix)
+        {
+            string a = Array.Find(args, x => x.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            if (a == null) return null;
+            string[] v = Array.FindAll(a.Substring(prefix.Length).Trim('"', '\'', ' ').Split(','), x => x.Trim().Length > 0);
+            v = Array.ConvertAll(v, x => x.Trim());
+            return v.Length == 0 || (v.Length == 1 && v[0].Equals("default", StringComparison.OrdinalIgnoreCase)) ? null : v;
+        }
+
         // Release number (MAJOR.MINOR) from the repo's VERSION file, via the assembly version (HmmRevive.csproj).
         public static string Version
         {
             get { Version v = typeof(Entry).Assembly.GetName().Version; return v.Major + "." + v.Minor; }
         }
+
+        private static string Join(string[] v) => v == null ? "default" : string.Join(",", v);
 
         public static void Init()
         {
@@ -105,6 +128,11 @@ namespace HmmRevive
             if (score != null) ScoreTarget = int.Parse(score.Substring("--hmmrevive-score=".Length));
             string car = Array.Find(args, a => a.StartsWith("--hmmrevive-car=", StringComparison.OrdinalIgnoreCase));
             if (car != null && car.Length > "--hmmrevive-car=".Length) Car = car.Substring("--hmmrevive-car=".Length).Trim('"', '\'', ' ');
+            string skin = Array.Find(args, a => a.StartsWith("--hmmrevive-skin=", StringComparison.OrdinalIgnoreCase));
+            if (skin != null) Skin = skin.Substring("--hmmrevive-skin=".Length).Trim('"', '\'', ' ').Replace("#", "");
+            if (Skin == "" || Skin == "0" || "default".Equals(Skin, StringComparison.OrdinalIgnoreCase)) Skin = null;
+            RedBotCars = ParseList(args, "--hmmrevive-bot-cars-red=");
+            BluBotCars = ParseList(args, "--hmmrevive-bot-cars-blue=");
             Chaos = Array.Exists(args, a => a.Equals("--hmmrevive-chaos", StringComparison.OrdinalIgnoreCase));
             string chaosCars = Array.Find(args, a => a.StartsWith("--hmmrevive-chaos-cars=", StringComparison.OrdinalIgnoreCase));
             if (chaosCars != null)
@@ -112,6 +140,8 @@ namespace HmmRevive
                 Chaos = true;
                 ChaosCars = Array.ConvertAll(chaosCars.Substring("--hmmrevive-chaos-cars=".Length).Split(','), int.Parse);
             }
+            string shots = Array.Find(args, a => a.StartsWith("--hmmrevive-shots=", StringComparison.OrdinalIgnoreCase));
+            if (shots != null) Shots = int.Parse(shots.Substring("--hmmrevive-shots=".Length));
             string chat = Array.Find(args, a => a.StartsWith("--hmmrevive-autochat=", StringComparison.OrdinalIgnoreCase));
             if (chat != null) AutoChat = chat.Substring("--hmmrevive-autochat=".Length).Trim('"', '\'').Split(';');
             string repair = Array.Find(args, a => a.StartsWith("--hmmrevive-repair=", StringComparison.OrdinalIgnoreCase));
@@ -135,7 +165,7 @@ namespace HmmRevive
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
             InstallTestCryptoKeys();
             HideOwnWindows();
-            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Chaos={Chaos} Repair={RepairDelay}s/{RepairPercentPerSecond}% Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
+            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairPercentPerSecond}% Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
         }
     }
 

@@ -12,11 +12,12 @@ for ($i = 0; $i -lt $Cars.Count; $i += 2) {
 }
 $car = Ask "Car number or name" $s.Car
 $s.Car = $car -replace '["'']', ''
+$skin = Ask-Skin (Join-Path $PSScriptRoot "skins.txt") $s.Car $s
 $s.Name = (Ask "Your name" $s.Name) -replace '[#\s]', ''
 $s.Ip = Ask "Server IP or name (127.0.0.1 = this PC, or the host's Tailscale IP / relay address)" $s.Ip
 Save-Settings $s
 
-$params = @{ Name = $s.Name; Ip = $s.Ip; Car = $s.Car; Width = $s.Width; Height = $s.Height }
+$params = @{ Name = $s.Name; Ip = $s.Ip; Car = $s.Car; Skin = $skin; Width = $s.Width; Height = $s.Height }
 if ($s.Fullscreen) { $params.Fullscreen = $true } else { $params.Windowed = $true }
 if ($s.Ip -eq "127.0.0.1" -and $s.Score -ne 3) { $params.Score = $s.Score } # same points-to-win as the server host.bat started
 & (Join-Path $Repo "tools\run_client.ps1") @params

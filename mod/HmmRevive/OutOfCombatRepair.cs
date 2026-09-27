@@ -15,19 +15,23 @@ namespace HmmRevive
     ///
     /// Hoplon's own version (MartyrModifiersOutOfCombat in the OutOfCombatGadget slot) is still in the code, but every
     /// car's slot now holds Dummy_GenericGadget and its effect assets are gone, so this redoes it by hand. "Took damage"
-    /// is HP or temp HP going down between frames, so hazards and every damage kind count. HP is written the same way
-    /// CombatData's own regen does it; the CombatData stream sends it to the clients, so they need nothing.
+    /// is the game's damage event (CombatObject.ListenToPosDamageTaken, every HP damage kind incl. hazards, damage the
+    /// shield absorbed and damage a car does to itself, e.g. the HP cost of Full Metal Judge's aggressive mode, 0.15 per
+    /// tick). Temp HP draining by itself (CombatData's HPTempDegradation, e.g. Full Metal Judge's shield) is not a hit;
+    /// watching HP + temp HP for drops made that shield stop the repair in the defensive mode.
+    /// HP is written the same way CombatData's own regen does it; the CombatData stream sends it to the clients.
     /// </summary>
     public class OutOfCombatRepair : MonoBehaviour
     {
         private class CarState
         {
-            public float LastHealth; // HP + temp HP seen at the end of the previous frame
             public int LastHitTime;  // playback ms of the last damage (or death/respawn/round change)
             public bool Repairing;
+            public bool Full; // "OOC full" logged for this repair
         }
 
-        private static readonly Dictionary<int, CarState> Cars = new Dictionary<int, CarState>();
+        // Per car (the CombatObject survives car swaps), subscribed to its damage event when first seen.
+        private static readonly Dictionary<CombatObject, CarState> Cars = new Dictionary<CombatObject, CarState>();
         private static int _lastTime;
 
         public static void Attach(HMMHub hub)
@@ -70,29 +74,41 @@ namespace HmmRevive
                 if (combat == null || combat.Data == null) continue;
                 CombatData data = combat.Data;
                 CarState s;
-                if (!Cars.TryGetValue(p.PlayerCarId, out s)) Cars[p.PlayerCarId] = s = new CarState { LastHitTime = now };
-                float health = data.HP + data.HPTemp;
+                if (!Cars.TryGetValue(combat, out s))
+                {
+                    Cars[combat] = s = new CarState { LastHitTime = now };
+                    combat.ListenToPosDamageTaken += OnDamageTaken;
+                }
                 bool usable = delivery && combat.IsAlive() && data.HP > 0f
                               && combat.SpawnController != null && combat.SpawnController.State == SpawnStateKind.Spawned;
-                if (!usable || health < s.LastHealth - 0.01f)
+                if (!usable)
                 {
-                    if (s.Repairing && usable) Log.Info($"OOC stop {p.Name} hp={data.HP:0}/{data.HPMax} (hit)");
                     s.Repairing = false;
                     s.LastHitTime = now;
-                    s.LastHealth = health;
                     continue;
                 }
                 if (now - s.LastHitTime >= delayMs && data.HP < data.HPMax
                     && !combat.Attributes.CurrentStatus.HasFlag(StatusKind.HpUnhealable))
                 {
                     if (!s.Repairing) Log.Info($"OOC start {p.Name} hp={data.HP:0}/{data.HPMax}");
+                    if (!s.Repairing) s.Full = false;
                     s.Repairing = true;
                     data.HP = Mathf.Min(data.HPMax, data.HP + data.HPMax * Entry.RepairPercentPerSecond / 100f * dt);
-                    if (data.HP >= data.HPMax) Log.Info($"OOC full {p.Name} hp={data.HPMax}");
+                    if (data.HP >= data.HPMax && !s.Full) Log.Info($"OOC full {p.Name} hp={data.HPMax}");
+                    if (data.HP >= data.HPMax) s.Full = true;
                 }
-                else s.Repairing = false;
-                s.LastHealth = data.HP + data.HPTemp;
+                else if (data.HP < data.HPMax) s.Repairing = false; // full: stay on (no second "start" log)
             }
+        }
+
+        // Server damage event (CombatController, after the damage is applied).
+        private static void OnDamageTaken(CombatObject causer, CombatObject taker, ModifierData mod, float amount, int eventId)
+        {
+            CarState s;
+            if (taker == null || !Cars.TryGetValue(taker, out s)) return;
+            if (s.Repairing) Log.Info($"OOC stop {taker.Player?.Name} hp={taker.Data.HP:0}/{taker.Data.HPMax} (hit by {(causer == null ? "?" : causer == taker ? "itself" : causer.name)})");
+            s.Repairing = false;
+            s.LastHitTime = GameHubBehaviour.Hub.GameTime.GetPlaybackTime();
         }
     }
 }

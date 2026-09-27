@@ -40,6 +40,27 @@ function Ask-Number($label, $current, $min, $max) {
         Write-Host "  enter a number from $min to $max"
     }
 }
+# Bot cars in slot order: car names or numbers separated by commas ("wildfire, photon, 16"), "random" (a different
+# random car each) or "default" (the game's usual line-up). Checked against the car list in skins.txt.
+function Ask-BotCars($label, $current, $carsFile) {
+    if (-not $current) { $current = "default" }
+    $cars = @()
+    if (Test-Path $carsFile) {
+        $cars = @(Get-Content $carsFile | Where-Object { $_ } | ForEach-Object { $f = $_ -split "`t"; "$($f[0]) $($f[1])" } | Select-Object -Unique)
+    }
+    while ($true) {
+        $v = ((Ask "$label (car names or numbers separated by commas, random, or default)" $current) -replace '["'']', '').Trim()
+        $bad = @()
+        foreach ($e in $v -split ',') {
+            $k = ($e -replace "[\s'._]", '').ToLower()
+            if (-not $k -or $k -eq 'random' -or $k -eq 'default' -or $cars.Count -eq 0) { continue }
+            $hit = $cars | Where-Object { $id, $name = $_ -split ' ', 2; $id -eq $k -or ($name -replace "[\s'._]", '').ToLower().Contains($k) }
+            if (-not $hit) { $bad += $e.Trim() }
+        }
+        if ($bad.Count -eq 0) { return $v }
+        Write-Host "  unknown car: $($bad -join ', '). Cars: $(($cars | ForEach-Object { ($_ -split ' ', 2)[1] }) -join ', ')"
+    }
+}
 function Ask-Difficulty($label, $current) {
     $levels = @("easy", "medium", "hard", "auto")
     if ($levels -notcontains $current) { $current = "auto" }
@@ -80,6 +101,8 @@ if ($running) {
 $cfgFile = Join-Path $kit "host-settings.json"
 $s = [pscustomobject]@{ Arena = 1; Humans = 2; SameTeam = "n"; BluBots = $null; RedBots = $null; BluDifficulty = "auto"; RedDifficulty = "auto" }
 if (Test-Path $cfgFile) { $s = Get-Content $cfgFile -Raw | ConvertFrom-Json }
+foreach ($p in "BluBotCars", "RedBotCars") { if (-not ($s.PSObject.Properties.Name -contains $p)) { $s | Add-Member -NotePropertyName $p -NotePropertyValue "default" } }
+$carsFile = Join-Path $kit "skins.txt"
 
 Write-Host ""
 Write-Host "Arenas:"
@@ -98,14 +121,18 @@ if ($s.SameTeam -eq "y") { $blue = $s.Humans; $red = 0 } else { $blue = [math]::
 Write-Host ""
 $s.BluBots = Ask-Number "Blue team bots" $s.BluBots ([int]($blue -eq 0)) (4 - $blue)
 if ($s.BluBots -gt 0) { $s.BluDifficulty = Ask-Difficulty "  their difficulty" $s.BluDifficulty }
+if ($s.BluBots -gt 0) { $s.BluBotCars = Ask-BotCars "  their cars" $s.BluBotCars $carsFile }
 $s.RedBots = Ask-Number "Red team bots" $s.RedBots ([int]($red -eq 0)) (4 - $red)
 if ($s.RedBots -gt 0) { $s.RedDifficulty = Ask-Difficulty "  their difficulty" $s.RedDifficulty }
+if ($s.RedBots -gt 0) { $s.RedBotCars = Ask-BotCars "  their cars" $s.RedBotCars $carsFile }
 $s | ConvertTo-Json | Set-Content $cfgFile
 
 Remove-Item (Join-Path $inst "hmmrevive-server-$Port.log"), (Join-Path $inst "server_unity_$Port.log") -ErrorAction SilentlyContinue
 $a = @("-batchmode", "-nographics")
 if ($s.BluBots -gt 0 -and $s.BluDifficulty -ne "auto") { $a += "--hmmrevive-difficulty-blue=$($s.BluDifficulty)" }
 if ($s.RedBots -gt 0 -and $s.RedDifficulty -ne "auto") { $a += "--hmmrevive-difficulty-red=$($s.RedDifficulty)" }
+if ($s.BluBots -gt 0 -and $s.BluBotCars -ne "default") { $a += "--hmmrevive-bot-cars-blue=$($s.BluBotCars -replace '\s', '')" }
+if ($s.RedBots -gt 0 -and $s.RedBotCars -ne "default") { $a += "--hmmrevive-bot-cars-red=$($s.RedBotCars -replace '\s', '')" }
 # --Drafter=0: character-select config by id; the by-team-size lookup throws on anything but 4v4.
 $a += @("-logFile", "`"$(Join-Path $inst "server_unity_$Port.log")`"", "--hmmrevive-server", "--Drafter=0",
     "BeginConfig",

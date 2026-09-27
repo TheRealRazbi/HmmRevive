@@ -20,9 +20,12 @@ PLAYERS
   - Accept the host's Tailscale invite link (once). Not needed if the host gives you a public relay address
     (a server name that forwards the game to the host): then you don't need Tailscale at all, just type that address in play.bat.
   - When the host says the server is up: double-click play.bat, then type the host's Tailscale IP
-    (100.x.y.z) or relay address, your name and a car. Your answers are remembered; just press Enter the next time.
+    (100.x.y.z) or relay address, your name, a car and a skin. Your answers are remembered; just press Enter the next time.
+  - Skin: play.bat lists the skins of your car; type a number to wear one, or "random" (a different one every
+    match). 0 = the original look (the default, which the bots always wear).
   - "Exit game" closes the game. For the next match, the host restarts the server and you run play.bat again.
   - In a match, type /cars in chat to list cars and /car <name> to switch (happens while you are dead or between rounds).
+    /skins lists your car's skins and /skin <number> changes it the same way.
 
 HOST (one person, on a PC that stays on during the match)
   Once:
@@ -39,8 +42,9 @@ HOST (one person, on a PC that stays on during the match)
   - The first time you run host.bat it offers to add a Windows Firewall rule (UDP 9696, Tailscale addresses
     only). Say yes and accept the admin prompt, or players can't connect.
   Every match:
-  - Double-click host.bat, pick arena, number of human players and bots. It shows your Tailscale IP:
-    send it to the players. The match starts once all human players have joined.
+  - Double-click host.bat, pick arena, number of human players and bots. For each team's bots you can pick their
+    cars, e.g. "wildfire, photon, peacemaker", or "random", or keep "default" (the game's usual line-up).
+    It shows your Tailscale IP: send it to the players. The match starts once all human players have joined.
   - host.bat offers to start your own game too. Points to win are always 3.
   - After the match, run host.bat again for a new one. stop.bat stops the server and the game.
   - Up to 8 cars per match (4 per team). Humans alternate Blue/Red in joining order, unless you pick

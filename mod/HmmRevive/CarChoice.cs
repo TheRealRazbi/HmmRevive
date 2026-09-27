@@ -1,40 +1,59 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Assets.ClientApiObjects;
+using Assets.ClientApiObjects.Components;
 using HeavyMetalMachines.Configuring.Instances;
+using HeavyMetalMachines.Localization;
 using HeavyMetalMachines.Match;
+using Hoplon.Unity.Loading;
 using Pocketverse;
+using UnityEngine;
 
 namespace HmmRevive
 {
     /// <summary>
-    /// Pick your car at launch (--hmmrevive-car=NAME|ID) instead of in a pick screen. SkipSwordfish mode assigns cars
-    /// from [Debug] Team{1,2}Character{1..4} per slot, so the client appends "#car" to the login name and the server
-    /// strips it off and uses it for that player.
+    /// Pick your car and skin at launch (--hmmrevive-car=NAME|ID, --hmmrevive-skin=NAME|NUMBER|random) instead of in a
+    /// pick screen. SkipSwordfish mode assigns cars and skins from [Debug] Team{1,2}Character{1..4} / Team{1,2}Skin{1..4}
+    /// per slot, so the client appends "#car#skin" to the login name and the server strips it off and uses it for that
+    /// player. Bots get the cars the host picked (--hmmrevive-bot-cars-red/blue=6,7,random) and always the default skin.
     /// </summary>
     public static class CarChoice
     {
         private const char Separator = '#';
         private static readonly Dictionary<string, string> ChoiceByName = new Dictionary<string, string>();
+        private static readonly Dictionary<string, string> SkinByName = new Dictionary<string, string>();
+        private static readonly System.Random Rng = new System.Random();
         private static bool _listed;
 
         // Client, AuthenticationSerializer.SerializeAuthenticationRequest: transforms the login name that is written.
+        // "name", "name#car" or "name#car#skin" (car may be empty).
         public static string LoginName(string name)
         {
-            return Entry.Car == null ? name : name + Separator + Entry.Car;
+            if (Entry.Car == null && Entry.Skin == null) return name;
+            return name + Separator + Entry.Car + (Entry.Skin == null ? "" : Separator + Entry.Skin);
         }
 
         // Server, start of AuthenticationManager.FakeAuthentication: username = TakeFromLogin(username).
         public static string TakeFromLogin(string login)
         {
-            int i = login?.LastIndexOf(Separator) ?? -1;
+            int i = login?.IndexOf(Separator) ?? -1;
             if (i < 0) return login;
-            string name = login.Substring(0, i), car = login.Substring(i + 1);
-            ChoiceByName[name] = car;
-            Log.Info($"player {name} wants car '{car}'");
+            string name = login.Substring(0, i);
+            string[] parts = login.Substring(i + 1).Split(Separator);
+            if (parts[0].Length > 0) ChoiceByName[name] = parts[0];
+            if (parts.Length > 1 && parts[1].Length > 0) SkinByName[name] = parts[1];
+            Log.Info($"player {name} wants car '{parts[0]}' skin '{(parts.Length > 1 ? parts[1] : "")}'");
             return name;
+        }
+
+        /// <summary>Skin the player asked for at login (a number, a name or "random"), or null.</summary>
+        public static string SkinWish(PlayerData player)
+        {
+            string skin;
+            return player != null && !player.IsBot && SkinByName.TryGetValue(player.Name, out skin) ? skin : null;
         }
 
         // Server, SkipSwordfishServerExecuteCharacterSelection.GetCharacterId: replaces configLoader.GetIntValue(inst).
@@ -48,14 +67,159 @@ namespace HmmRevive
             {
                 _listed = true;
                 Log.Info("cars: " + string.Join(", ", characters.OrderBy(c => c.Key).Select(c => c.Key + "=" + Names(c.Value)).ToArray()));
+                DumpSkins(characters);
             }
+            if (player.IsBot) return BotCar(player, characters, fallback);
             string want;
-            if (player.IsBot || !ChoiceByName.TryGetValue(player.Name, out want)) return fallback;
+            if (!ChoiceByName.TryGetValue(player.Name, out want)) return fallback;
             int id = Resolve(want, characters);
             if (id >= 0) return id;
             Log.Error($"unknown car '{want}' for {player.Name}; using slot default {fallback}");
             return fallback;
         }
+
+        // The host's list for the bot's team (--hmmrevive-bot-cars-red/blue), in slot order: "6,wildfire,random". A single
+        // "random" makes every bot of the team random; bots past the end of the list keep the game's slot default.
+        private static int BotCar(PlayerData bot, Dictionary<int, IItemType> characters, int fallback)
+        {
+            string[] list = bot.Team == TeamKind.Red ? Entry.RedBotCars : bot.Team == TeamKind.Blue ? Entry.BluBotCars : null;
+            if (list == null || list.Length == 0) return fallback;
+            List<PlayerData> mates = GameHubBehaviour.Hub.Players.Bots.Where(b => b.Team == bot.Team).OrderBy(b => b.TeamSlot).ToList();
+            int index = mates.IndexOf(bot);
+            string want = list.Length == 1 && IsRandom(list[0]) ? list[0] : index >= 0 && index < list.Length ? list[index] : null;
+            if (want == null || want.Equals("default", StringComparison.OrdinalIgnoreCase)) return fallback;
+            int id = IsRandom(want) ? RandomBotCar(bot, characters) : Resolve(want, characters);
+            if (id < 0)
+            {
+                Log.Error($"unknown bot car '{want}' for {bot.Name}; using slot default {fallback}");
+                return fallback;
+            }
+            BotPicks[bot] = id;
+            Log.Info($"bot {bot.Name} ({bot.Team} #{index + 1}) gets car {id}");
+            return id;
+        }
+
+        // Random bot cars differ from each other within a team where possible.
+        private static readonly Dictionary<PlayerData, int> BotPicks = new Dictionary<PlayerData, int>();
+
+        private static int RandomBotCar(PlayerData bot, Dictionary<int, IItemType> characters)
+        {
+            var taken = new HashSet<int>(GameHubBehaviour.Hub.Players.Bots
+                .Where(b => b.Team == bot.Team && b != bot && BotPicks.ContainsKey(b)).Select(b => BotPicks[b]));
+            int[] free = characters.Keys.Where(k => !taken.Contains(k)).ToArray();
+            if (free.Length == 0) free = characters.Keys.ToArray();
+            return free[Rng.Next(free.Length)];
+        }
+
+        public static bool IsRandom(string s) => s != null && (s.Equals("random", StringComparison.OrdinalIgnoreCase) || s == "?" || s.Equals("r", StringComparison.OrdinalIgnoreCase));
+
+        // Server, SkipSwordfishServerExecuteCharacterSelection.GetSkinId: replaces configLoader.GetValue(inst). The game
+        // then uses the car's skin whose item name equals the returned string (default skin when none does).
+        public static string SkinItemName(IConfigLoader config, ConfigInstance inst, PlayerData player, Guid characterId)
+        {
+            string fallback = config.GetValue(inst);
+            string want = SkinWish(player);
+            if (want == null) return fallback;
+            IItemType skin = ResolveSkin(want, characterId);
+            if (skin == null)
+            {
+                Log.Error($"unknown skin '{want}' for {player.Name}; using the default skin");
+                return fallback;
+            }
+            Log.Info($"player {player.Name} gets skin {skin.Name} ({SkinName(skin)})");
+            return skin.Name;
+        }
+
+        // ---------------------------------------------------------------- skins
+
+        private static HashSet<string> _shippedAssets;
+
+        // Skins of a car that ship a model, default first, then in the game's own order. "/skins", the launcher's skins.txt
+        // and a numeric --hmmrevive-skin use the position in this list (0 = default).
+        public static List<IItemType> SkinsOf(Guid characterId)
+        {
+            var collection = GameHubBehaviour.Hub.InventoryColletion;
+            IItemType def = collection.GetDefaultSkin(characterId);
+            var list = new List<IItemType>();
+            if (def != null) list.Add(def);
+            List<Guid> ids;
+            if (!collection.CharacterToSkinGuids.TryGetValue(characterId, out ids)) return list;
+            var others = new List<IItemType>();
+            foreach (Guid id in ids)
+            {
+                IItemType item;
+                if (!collection.TryGet(id, out item) || item == def || !Shipped(item)) continue;
+                if (item.Name.IndexOf("Tutorial", StringComparison.OrdinalIgnoreCase) >= 0) continue; // copy of the default
+                others.Add(item);
+            }
+            list.AddRange(others.OrderBy(s => Prefab(s).Index).ThenBy(s => s.Name, StringComparer.Ordinal));
+            return list;
+        }
+
+        private static SkinPrefabItemTypeComponent Prefab(IItemType skin)
+        {
+            try { return skin.GetComponent<SkinPrefabItemTypeComponent>(); }
+            catch { return null; }
+        }
+
+        // The skin's model is in the shipped content index (some skins lost their bundle when the game closed).
+        private static bool Shipped(IItemType skin)
+        {
+            var prefab = Prefab(skin);
+            if (prefab == null || string.IsNullOrEmpty(prefab.SkinPrefabName)) return false;
+            if (_shippedAssets == null)
+                _shippedAssets = new HashSet<string>(Loading.Content.content.Select(c => c.AssetName.ToLowerInvariant()));
+            return _shippedAssets.Contains(prefab.SkinPrefabName.ToLowerInvariant());
+        }
+
+        public static string SkinName(IItemType skin)
+        {
+            string name = null;
+            try { name = Language.Get(Prefab(skin).CardSkinDraft, TranslationContext.Items); }
+            catch { }
+            return string.IsNullOrEmpty(name) || name.StartsWith("#") ? skin.Name : name;
+        }
+
+        // A number from the car's skin list, a skin name (exact, then substring, ignoring case and spaces) or "random"
+        // (any skin but the default). null when nothing matches.
+        public static IItemType ResolveSkin(string want, Guid characterId)
+        {
+            List<IItemType> skins = SkinsOf(characterId);
+            if (skins.Count == 0) return null;
+            if (IsRandom(want)) return skins.Count > 1 ? skins[1 + Rng.Next(skins.Count - 1)] : skins[0];
+            int n;
+            if (int.TryParse(want, out n)) return n >= 0 && n < skins.Count ? skins[n] : null;
+            string key = Normalize(want);
+            if (key.Length == 0) return null;
+            return skins.FirstOrDefault(s => Normalize(SkinName(s)) == key || Normalize(s.Name) == key)
+                ?? skins.FirstOrDefault(s => Normalize(SkinName(s)).Contains(key));
+        }
+
+        // Log every car's skins and write them to hmmrevive-skins.txt next to HMM.exe ("carId<TAB>car<TAB>number<TAB>skin"), the
+        // source of the launcher's skins.txt.
+        private static void DumpSkins(Dictionary<int, IItemType> characters)
+        {
+            try
+            {
+                var lines = new List<string>();
+                foreach (var c in characters.OrderBy(c => c.Key))
+                {
+                    List<IItemType> skins = SkinsOf(c.Value.Id);
+                    int missing = GameHubBehaviour.Hub.InventoryColletion.CharacterToSkinGuids.TryGetValue(c.Value.Id, out var all) ? all.Count(g => !skins.Any(s => s.Id == g)) : 0;
+                    Log.Info($"skins {c.Key} {DisplayName(c.Value)}: " + string.Join(", ", skins.Select((s, i) =>
+                        $"{i}={SkinName(s)} [{s.Name} {Prefab(s)?.SkinPrefabName} {Prefab(s)?.Tier}]").ToArray()) + (missing > 0 ? $" (+{missing} without a model)" : ""));
+                    for (int i = 0; i < skins.Count; i++) lines.Add($"{c.Key}\t{DisplayName(c.Value)}\t{i}\t{SkinName(skins[i]).Replace('’', '\'')}"); // ASCII for the Windows console
+                }
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".", "hmmrevive-skins.txt"),
+                    string.Join("\r\n", lines.ToArray()) + "\r\n");
+            }
+            catch (Exception e)
+            {
+                Log.Error("skin list failed: " + e);
+            }
+        }
+
+        // ---------------------------------------------------------------- cars
 
         // Character id for a number, codename (HotRod) or display name (Wildfire): exact, then substring, ignoring case
         // and spaces. -1 when nothing matches.
@@ -82,11 +246,12 @@ namespace HmmRevive
         public static string Names(IItemType item)
         {
             string display = null;
-            try { display = item.GetComponent<Assets.ClientApiObjects.Components.CharacterItemTypeComponent>().GetCharacterLocalizedName(); }
+            try { display = item.GetComponent<CharacterItemTypeComponent>().GetCharacterLocalizedName(); }
             catch { }
             return string.IsNullOrEmpty(display) || display == item.Name || display.StartsWith("#") ? item.Name : item.Name + "/" + display;
         }
 
-        private static string Normalize(string s) => s.Replace(" ", "").Replace("_", "").ToLowerInvariant();
+        private static string Normalize(string s) =>
+            s.Replace(" ", "").Replace("_", "").Replace("'", "").Replace("’", "").Replace(".", "").ToLowerInvariant();
     }
 }

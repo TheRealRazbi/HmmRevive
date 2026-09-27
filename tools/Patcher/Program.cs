@@ -130,6 +130,17 @@ static class Program
         getInt.Operand = Hook("HmmRevive.CarChoice", "CharacterIndex");
         Console.WriteLine("  redirect -> SkipSwordfishServerExecuteCharacterSelection::GetCharacterId GetIntValue -> CarChoice.CharacterIndex");
 
+        // Skin choice at launch (CarChoice.SkinItemName): GetSkinId(player, characterId) compares configLoader.GetValue(inst)
+        // with the car's skin item names.
+        var getSkin = Target("HeavyMetalMachines.CharacterSelection.Server.Swordfish.SkipSwordfishServerExecuteCharacterSelection", "GetSkinId");
+        var getValue = getSkin.Body.Instructions.Single(i => i.Operand is MethodReference mr && mr.Name == "GetValue");
+        var sil = getSkin.Body.GetILProcessor();
+        sil.InsertBefore(getValue, sil.Create(OpCodes.Ldarg_1));
+        sil.InsertBefore(getValue, sil.Create(OpCodes.Ldarg_2));
+        getValue.OpCode = OpCodes.Call;
+        getValue.Operand = Hook("HmmRevive.CarChoice", "SkinItemName");
+        Console.WriteLine("  redirect -> SkipSwordfishServerExecuteCharacterSelection::GetSkinId GetValue -> CarChoice.SkinItemName");
+
         // Options saved locally instead of in a Swordfish bag (mod/HmmRevive/LocalPrefs.cs)
         foreach (var name in new[] { "Save", "SaveNow" })
             Prologue(Target("HeavyMetalMachines.HMMPlayerPrefs", name), il => new[] { il.Create(OpCodes.Ldarg_0), il.Create(OpCodes.Call, Hook("HmmRevive.LocalPrefs", "Save")) });

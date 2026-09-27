@@ -79,6 +79,7 @@ namespace HmmRevive
             Watchdog.Attach((HeavyMetalMachines.HMMHub)hub);
             CarSwap.Attach((HeavyMetalMachines.HMMHub)hub);
             OutOfCombatRepair.Attach((HeavyMetalMachines.HMMHub)hub);
+            TestShots.Attach((HeavyMetalMachines.HMMHub)hub);
         }
 
         // Start of Pocketverse.GameState.EnableState: unbuffered state trace for both roles.

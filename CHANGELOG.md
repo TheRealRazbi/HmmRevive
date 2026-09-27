@@ -2,6 +2,17 @@
 
 Newest first. The version is shown on the first line of every kit window (setup, play, host).
 
+## 1.1 (2026-09-27)
+
+- **Skins:** pick a skin when you join (play.bat lists your car's skins and remembers your pick per car; `0` =
+  original, the default). In a match,
+  `/skins` lists them and `/skin <number>` changes it when you respawn or between rounds.
+- **Bot cars:** host.bat lets you pick each team's bot cars, e.g. `wildfire, photon, peacemaker`, or `random`.
+- **Fixed:** after switching cars mid-match, you now spawn in your new car's role position (transporters first), and
+  the weapon details window shows your new car.
+- **Out-of-combat repair** is a bit faster (7% of max HP per second instead of 5%) and now works for Full Metal Judge
+  in defensive mode (the shield's own decay used to stop it). His aggressive mode still doesn't repair.
+
 ## 1.0 (2026-09-26)
 
 First public release. Changes since the test kits shared earlier:

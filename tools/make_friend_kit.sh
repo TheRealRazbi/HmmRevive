@@ -13,7 +13,7 @@ cp mod/HmmRevive/bin/Release/net35/HmmRevive.dll "$KIT/mod/"
 if ! out=$(dotnet publish tools/Patcher -c Release -r win-x64 --self-contained -p:PublishSingleFile=true \
     -p:EnableCompressionInSingleFile=true -o build/patcher-kit -v q -nologo 2>&1); then echo "$out" | grep -E " error " | sort -u; echo "PATCHER PUBLISH FAILED"; exit 1; fi
 cp build/patcher-kit/Patcher.exe "$KIT/"
-cp tools/friend-kit/* "$KIT/"
+cp tools/friend-kit/* launcher/skins.txt "$KIT/"
 sed -i "s/@VERSION@/$V/" "$KIT/README.txt" "$KIT/LEIA-ME.txt"
 cp CHANGELOG.md "$KIT/CHANGELOG.txt"
 # Leak check before zipping, when tools/check_public.py is present (the maintainer's copy). Patcher.dll is the

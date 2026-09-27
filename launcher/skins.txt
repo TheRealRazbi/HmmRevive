@@ -1,0 +1,302 @@
+1	Stingray	0	Original
+1	Stingray	1	Underhanded Star (Rusted)
+1	Stingray	2	Mobile Suit (Purple)
+1	Stingray	3	Stingarang (Purple)
+1	Stingray	4	Stingarang (Green)
+1	Stingray	5	Scary Machines and Nice Videos
+1	Stingray	6	More Machines and Videos
+1	Stingray	7	My Name is Stingray
+1	Stingray	8	Underhanded Star (HMM)
+1	Stingray	9	Mobile Suit (Red)
+1	Stingray	10	Veteran
+1	Stingray	11	Sunset Eagle
+1	Stingray	12	Metal Clash Winners #1
+1	Stingray	13	Sharkray (Holo)
+1	Stingray	14	Mr. Sawtooth
+1	Stingray	15	Manta Ray
+1	Stingray	16	Sharkray (Steel)
+1	Stingray	17	Cryotech
+2	Black Lotus	0	Original
+2	Black Lotus	1	The True Receptor
+2	Black Lotus	2	Returned from Nirvana (Silver)
+2	Black Lotus	3	Seventh Dimension (Light)
+2	Black Lotus	4	Eternal Road
+2	Black Lotus	5	Astral Wheels
+2	Black Lotus	6	Night Driver
+2	Black Lotus	7	Speed of Lightning
+2	Black Lotus	8	7 Gears and Chakras
+2	Black Lotus	9	Returned from Nirvana (Brass)
+2	Black Lotus	10	Seventh Dimension (Neon)
+2	Black Lotus	11	Veteran
+2	Black Lotus	12	Simply the Best
+2	Black Lotus	13	Curse of Nefertem
+2	Black Lotus	14	The Citrine Rivet
+2	Black Lotus	15	H.S.U.V. Prototype
+2	Black Lotus	16	Fearless Champion Black Lotus
+2	Black Lotus	17	Mighty Champion Black Lotus
+2	Black Lotus	18	Prime Champion Black Lotus
+2	Black Lotus	19	The Riddle Rider
+2	Black Lotus	20	Agent Lotus
+2	Black Lotus	21	The Morning Paladin
+3	Artificer	0	Original
+3	Artificer	1	Journey to Rupture (Rusty)
+3	Artificer	2	Eye of the Beholder (Abyssal)
+3	Artificer	3	Back and Beyond
+3	Artificer	4	Lost in the Old World
+3	Artificer	5	The Metal Equation
+3	Artificer	6	Beyond the Darkness
+3	Artificer	7	Forever Digital
+3	Artificer	8	Journey to Rupture (Military)
+3	Artificer	9	Eye of the Beholder (Tropical)
+3	Artificer	10	Veteran
+3	Artificer	11	71st Witchcraft
+3	Artificer	12	Prophecy Probe
+3	Artificer	13	Journey to Rupture (Steampunk)
+3	Artificer	14	Metal Clash Winners #2
+3	Artificer	15	Chocolate Factory
+3	Artificer	16	Arctic Ops
+3	Artificer	17	Ready for the Summer
+3	Artificer	18	The Elvish Wreathcrafter
+4	Rampage	0	Original
+4	Rampage	1	Metal Ox
+4	Rampage	2	Prime Champion Rampage
+4	Rampage	3	The Pain Train (Red)
+4	Rampage	4	The Battle of Metal City (Green)
+4	Rampage	5	Enemy of Bosses
+4	Rampage	6	Pleasure to Push
+4	Rampage	7	War Within a Thrust
+4	Rampage	8	Prison Blockage
+4	Rampage	9	The Killing Dozer
+4	Rampage	10	The Pain Train (Green)
+4	Rampage	11	The Battle of Metal City (Red)
+4	Rampage	12	Veteran
+4	Rampage	13	Arachnophobia
+4	Rampage	14	Steeltsov
+4	Rampage	15	Appetite For Construction
+4	Rampage	16	Mighty Champion Rampage
+4	Rampage	17	The Snow Piercer (Rusted)
+4	Rampage	18	Rampo, the Loco-motive
+4	Rampage	19	Fearless Champion Rampage
+4	Rampage	20	Sect's Twin Hammers
+4	Rampage	21	The Snow Piercer (Dark)
+5	Dirt Devil	0	Original
+5	Dirt Devil	1	We Hate the Sand (Military)
+5	Dirt Devil	2	Too Stubborn to Die (Asleep)
+5	Dirt Devil	3	Road to Hunt
+5	Dirt Devil	4	Hunting Days in the Sun
+5	Dirt Devil	5	Deep-Sea Shark (Blue)
+5	Dirt Devil	6	Anarchy in the HMM
+5	Dirt Devil	7	Terror on the High Sands
+5	Dirt Devil	8	Captain Devil's Revenge
+5	Dirt Devil	9	We Hate the Sand (Tourist)
+5	Dirt Devil	10	Too Stubborn to Die (Awaken)
+5	Dirt Devil	11	Veteran
+5	Dirt Devil	12	Deep-Sea Shark (Pixeltip)
+5	Dirt Devil	13	The Urbancrawler
+5	Dirt Devil	14	D.P.U.V. Prototype
+5	Dirt Devil	15	Fearless Champion Dirt Devil
+5	Dirt Devil	16	Mighty Champion Dirt Devil
+5	Dirt Devil	17	Prime Champion Dirt Devil
+5	Dirt Devil	18	We Hate the Sand (Steampunk)
+5	Dirt Devil	19	Dirt Demon
+5	Dirt Devil	20	Too Stubborn to Die (Shaman)
+5	Dirt Devil	21	Beach Buggy
+6	Wildfire	0	Original
+6	Wildfire	1	Burning Turbine (Black)
+6	Wildfire	2	For those about to Burn
+6	Wildfire	3	Got Fired
+6	Wildfire	4	Water and Fire
+6	Wildfire	5	Drive my Fire
+6	Wildfire	6	Hard as Fire
+6	Wildfire	7	Igniting Machine
+6	Wildfire	8	Burning Turbine (Yellow)
+6	Wildfire	9	Howl of the Wolves
+6	Wildfire	10	Veteran
+6	Wildfire	11	Blazing Cup Prize
+6	Wildfire	12	Summer Flower
+6	Wildfire	13	Fearless Champion Wildfire
+6	Wildfire	14	Prime Champion Wildfire
+6	Wildfire	15	Tomoe Samurai
+6	Wildfire	16	Azure Flame
+6	Wildfire	17	P.P.U.V. Prototype
+6	Wildfire	18	Through the Darkness and Flames
+6	Wildfire	19	The Flametamer
+6	Wildfire	20	Ride of the Valkyries
+7	Full Metal Judge	0	Original
+7	Full Metal Judge	1	Metal Judgement (Purple)
+7	Full Metal Judge	2	Metal Paladin (Gold)
+7	Full Metal Judge	3	The Blightocaust
+7	Full Metal Judge	4	Wastelands Justice
+7	Full Metal Judge	5	Metal Loves Us All
+7	Full Metal Judge	6	Baptism of Metal
+7	Full Metal Judge	7	Baptism of Blood
+7	Full Metal Judge	8	Metal Judgement (Violet)
+7	Full Metal Judge	9	Metal Paladin (Ruby)
+7	Full Metal Judge	10	Veteran
+7	Full Metal Judge	11	Gatling Gun
+7	Full Metal Judge	12	The Ironclad
+7	Full Metal Judge	13	Nemesis Seeker (Sand)
+7	Full Metal Judge	14	Nemesis Seeker (Plains)
+7	Full Metal Judge	15	Nemesis Seeker (Jungle)
+7	Full Metal Judge	16	Nemesis Seeker (Night)
+7	Full Metal Judge	17	Tundra Survivor
+7	Full Metal Judge	18	Twilight Devout
+8	Windrider	0	Original
+8	Windrider	1	Winds of Fortune
+8	Windrider	2	Buffalo Skull (Blue)
+8	Windrider	3	Among the Dead (Green)
+8	Windrider	4	Ghost Driver (Yellow)
+8	Windrider	5	Ghost Driver (Black)
+8	Windrider	6	Bifrost Unicorn
+8	Windrider	7	Unliving Wrath
+8	Windrider	8	The Bloody Beast
+8	Windrider	9	Death from Beyond
+8	Windrider	10	Buffalo Skull (Black)
+8	Windrider	11	Among the Dead (Purple)
+8	Windrider	12	Veteran
+8	Windrider	13	Phantomenon
+8	Windrider	14	Last Summer's Ghost
+8	Windrider	15	Young Spirit
+8	Windrider	16	Winter Wraith
+9	Icebringer	0	Original
+9	Icebringer	1	Glacial Carrier
+9	Icebringer	2	Cryonic Effect
+9	Icebringer	3	Cold Truck (Purple)
+9	Icebringer	4	Fafnir's Treasure (Copper)
+9	Icebringer	5	Helheim Driver
+9	Icebringer	6	Jotunheim Pilot
+9	Icebringer	7	Niflheim Trucker
+9	Icebringer	8	Cryonic Effect (Purple)
+9	Icebringer	9	Mr. Brainfreeze
+9	Icebringer	10	Highway Hauler
+9	Icebringer	11	Fafnir's Treasure (Ice)
+9	Icebringer	12	Veteran
+9	Icebringer	13	Cold Truck (Thermal)
+9	Icebringer	14	Frost Squad
+10	Metal Herald	0	Original
+10	Metal Herald	1	No prayer for the Crying (White)
+10	Metal Herald	2	Angelic Chords (Grey)
+10	Metal Herald	3	Temple of Blood
+10	Metal Herald	4	Shadow Preacher
+10	Metal Herald	5	The Old One
+10	Metal Herald	6	Sinner Messiah
+10	Metal Herald	7	Gospel of Death
+10	Metal Herald	8	Highway to Heaven
+10	Metal Herald	9	No prayer for the Crying (Dark)
+10	Metal Herald	10	Angelic Chords (Blue)
+10	Metal Herald	11	Veteran
+10	Metal Herald	12	Twisted Herald
+10	Metal Herald	13	Officer Herald
+10	Metal Herald	14	Angelic Chords (Royal)
+13	Little Monster	0	Original
+13	Little Monster	1	Little Big Train
+13	Little Monster	2	Father's Heritage
+13	Little Monster	3	Between Dolls and Tires (Black)
+13	Little Monster	4	Run. Trample. Repeat.
+13	Little Monster	5	Dollhouse of Death
+13	Little Monster	6	Playground Machine
+13	Little Monster	7	The Doll in Me
+13	Little Monster	8	The Monster in Me
+13	Little Monster	9	Machine Eater
+13	Little Monster	10	Between Dolls and Tires (Blue)
+13	Little Monster	11	Veteran
+13	Little Monster	12	It's Alive!
+13	Little Monster	13	Party Time!
+13	Little Monster	14	Mechanic Lamprey
+13	Little Monster	15	S.E.U.V. Prototype
+13	Little Monster	16	Little Judge
+13	Little Monster	17	Gelid Crusher
+14	Clunker	0	Original
+14	Clunker	1	Rust in Pieces (Old)
+14	Clunker	2	Hand the Lightning (Orange)
+14	Clunker	3	Stars and Glory
+14	Clunker	4	Freedom Riders
+14	Clunker	5	Steel Tow Truck
+14	Clunker	6	Magnetic Iron
+14	Clunker	7	Tow 'Em All
+14	Clunker	8	Rust in Pieces (Red)
+14	Clunker	9	Hand the Lightning (Green)
+14	Clunker	10	Veteran
+14	Clunker	11	Le Gardien
+14	Clunker	12	We Totally Are Cops
+14	Clunker	13	Divine Hammer
+14	Clunker	14	The Hansel Bros
+14	Clunker	15	Life Buoys
+14	Clunker	16	Magnet Unit
+15	Stargazer	0	Original
+15	Stargazer	1	Steamy Scholar
+15	Stargazer	2	Space Healer
+15	Stargazer	3	Recon Drone
+15	Stargazer	4	Guardian Angel
+15	Stargazer	5	Amateur Stargazer
+15	Stargazer	6	Professional Astronaut
+15	Stargazer	7	Expert Cosmonaut
+15	Stargazer	8	Galactic Shuttle
+15	Stargazer	9	Static Interference
+15	Stargazer	10	Deep-Sea Submarine
+15	Stargazer	11	Veteran
+15	Stargazer	12	Waves of the Past
+15	Stargazer	13	Traverse the Void
+16	Peacemaker	0	Original
+16	Peacemaker	1	K9-001 Slug
+16	Peacemaker	2	Lawful Evil
+16	Peacemaker	3	Armored Chameleon
+16	Peacemaker	4	Captain's Company
+16	Peacemaker	5	Colonel's Regiment
+16	Peacemaker	6	General's Army
+16	Peacemaker	7	Sandcastle Bully
+16	Peacemaker	8	Col. Fluffum's Robotronic Panzer
+16	Peacemaker	9	The Ogrenaut Arbalister (Red)
+16	Peacemaker	10	The Ogrenaut Arbalister (Green)
+16	Peacemaker	11	Veteran
+16	Peacemaker	12	Operation: Avalanche
+17	Vulture	0	Original
+17	Vulture	1	Playing with Knives
+17	Vulture	2	Edge of the Night
+17	Vulture	3	Blade Master
+17	Vulture	4	Long Arm Of The Law
+17	Vulture	5	The Avenging Knight
+17	Vulture	6	Veteran
+17	Vulture	7	The Reindeer Machine
+18	Calamity	0	Original
+18	Calamity	1	Professional Calamity
+18	Calamity	2	Specialist Calamity
+18	Calamity	3	Grand Master Calamity
+18	Calamity	4	Veteran
+19	Photon	0	Original
+19	Photon	1	The Solar City (White)
+19	Photon	2	Fearless Champion Photon
+19	Photon	3	Mighty Champion Photon
+19	Photon	4	Prime Champion Photon
+19	Photon	5	Get Sunny (White)
+19	Photon	6	The Solar City (Green)
+19	Photon	7	Quicker, Better, Faster, Brighter
+19	Photon	8	Hyper Light
+19	Photon	9	Rainbow Machine
+19	Photon	10	Give Speed back to Light
+19	Photon	11	Blackout
+19	Photon	12	Get Sunny (Red)
+19	Photon	13	The Solar City (Red)
+19	Photon	14	Veteran
+19	Photon	15	Luminoushawk (Arctic)
+19	Photon	16	Great Photon's Wonderwagon
+19	Photon	17	Luminoushawk (Military)
+19	Photon	18	Vampire Countess
+19	Photon	19	Light's Fall
+20	Killer J.	0	Original
+20	Killer J.	1	Race to Jokstruction (Green)
+20	Killer J.	2	The Joke is on you (Yellow)
+20	Killer J.	3	Ride to Joke, Joke to Ride (Green)
+20	Killer J.	4	Ride to Joke, Joke to Ride (Purple)
+20	Killer J.	5	Shoot to Jest
+20	Killer J.	6	One Big Jerk
+20	Killer J.	7	Jack-in-a-Wheel
+20	Killer J.	8	Race to Jokstruction (Purple)
+20	Killer J.	9	The Joke is on you (Purple & Green)
+20	Killer J.	10	Veteran
+20	Killer J.	11	Legendary Dragon
+20	Killer J.	12	Krampus J.
+20	Killer J.	13	Crazy Taxi
+20	Killer J.	14	The Mischievous Gadgeteer
+20	Killer J.	15	J. Frost
+20	Killer J.	16	Little Pope J.

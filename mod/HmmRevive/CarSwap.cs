@@ -40,6 +40,9 @@ namespace HmmRevive
     /// The car keeps its object (id, CombatObject, SpawnController, stats...) so the HUD, bots and scoreboard keep valid
     /// references; only what PlayerCarFactory.CreateCar derives from the CharacterInfo is replaced: gadgets, model,
     /// colliders, handling, HP and bot goals. Every car is preloaded during the loading screen (CarPreCache hook).
+    /// "/skin 3" (or a name, or "random"; "/skins" lists them) changes the skin the same way, and a player's skin wish (from
+    /// the launcher or /skin) carries over to the cars they swap to. Skin models load on demand; a swap waits until the
+    /// server has the model, and each client applies it once it has loaded it too.
     /// Server and clients talk through the chat RPCs: commands are caught in ChatService.ReceiveMessage on the server,
     /// and replies/swaps are chat messages starting with <see cref="Marker"/> that ChatService.ClientReceiveMessage
     /// swallows on the clients.
@@ -51,10 +54,22 @@ namespace HmmRevive
 
         private static CarSwap _instance;
 
-        // Server: car object id -> wanted character id, applied at the next safe moment.
-        private static readonly Dictionary<int, int> Pending = new Dictionary<int, int>();
-        // Client: swaps received from the server, applied from Update (outside the network callback).
-        private static readonly Queue<KeyValuePair<int, int>> ClientQueue = new Queue<KeyValuePair<int, int>>();
+        private struct Want
+        {
+            public int Car;   // character id
+            public Guid Skin; // skin item id, Guid.Empty = the car's default skin
+
+            public Want(int car, Guid skin) { Car = car; Skin = skin; }
+        }
+
+        // Server: car object id -> wanted car and skin, applied at the next safe moment.
+        private static readonly Dictionary<int, Want> Pending = new Dictionary<int, Want>();
+        // Client: swaps received from the server (car object id -> car and skin), applied from Update (outside the network callback).
+        private static readonly Queue<KeyValuePair<int, Want>> ClientQueue = new Queue<KeyValuePair<int, Want>>();
+        // Server: skin wishes typed with /skin this match, by player name (they replace the launcher's --hmmrevive-skin).
+        private static readonly Dictionary<string, string> SkinWishes = new Dictionary<string, string>();
+        // Skin models being loaded mid-match (asset names).
+        private static readonly HashSet<string> SkinLoads = new HashSet<string>();
         // Chaos test mode (--hmmrevive-chaos): the unspawn time we already rolled a random car for, per car.
         private static readonly Dictionary<int, int> ChaosSeen = new Dictionary<int, int>();
         private static BombScoreboardState _lastPhase = (BombScoreboardState)(-1);
@@ -80,6 +95,7 @@ namespace HmmRevive
             Pending.Clear();
             ChaosSeen.Clear();
             ClientQueue.Clear();
+            SkinWishes.Clear();
             _lastPhase = (BombScoreboardState)(-1);
         }
 
@@ -160,8 +176,28 @@ namespace HmmRevive
 
         private static PlayerCarFactory Factory() => (PlayerCarFactory)typeof(PlayerCarFactory).GetField("_instance", Any).GetValue(null);
 
-        private static string SkinAssetName(Guid charItemTypeId) => GameHubBehaviour.Hub.InventoryColletion
-            .GetSkinItemTypeScriptableObjectByGuid(charItemTypeId, Guid.Empty).GetComponent<SkinPrefabItemTypeComponent>().SkinPrefabName;
+        private static string SkinAssetName(Guid charItemTypeId, Guid skin = default(Guid)) => GameHubBehaviour.Hub.InventoryColletion
+            .GetSkinItemTypeScriptableObjectByGuid(charItemTypeId, skin).GetComponent<SkinPrefabItemTypeComponent>().SkinPrefabName;
+
+        // True when the skin model is in memory; otherwise starts loading it (once) and returns false.
+        private static bool SkinReady(string asset)
+        {
+            Content content = Loading.Content.GetAsset(asset);
+            if (content == null) return true; // not shipped: the rebuild will fail and log it
+            if (content.HasAsset) return true;
+            if (SkinLoads.Add(asset))
+            {
+                var token = new LoadingToken(typeof(CarSwap));
+                token.AddLoadable(Loading.GetResourceLoadable(content));
+                Loading.Engine.LoadToken(token, result =>
+                {
+                    SkinLoads.Remove(asset);
+                    Log.Info($"skin model {asset} loaded: {result}");
+                });
+                Log.Info($"loading skin model {asset}");
+            }
+            return false;
+        }
 
         // ---------------------------------------------------------------- chat
 
@@ -172,14 +208,16 @@ namespace HmmRevive
             string[] words = msg.Trim().Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (words.Length == 0) return false;
             string cmd = words[0].ToLowerInvariant();
-            if (cmd != "/car" && cmd != "/cars") return false;
+            if (cmd != "/car" && cmd != "/cars" && cmd != "/skin" && cmd != "/skins") return false;
             try
             {
                 var chat = (ChatService)chatService;
                 PlayerData player = GameHubBehaviour.Hub.Players.GetPlayerByAddress(chat.Sender);
                 if (player == null || player.IsNarrator) return true;
                 string arg = words.Length > 1 ? words[1].Trim() : "";
-                if (cmd == "/cars" || arg.Length == 0) ListCars(chat, player);
+                if (cmd == "/skins" || (cmd == "/skin" && arg.Length == 0)) ListSkins(chat, player);
+                else if (cmd == "/skin") RequestSkin(chat, player, arg);
+                else if (cmd == "/cars" || arg.Length == 0) ListCars(chat, player);
                 else RequestCar(chat, player, arg);
             }
             catch (Exception e)
@@ -198,6 +236,80 @@ namespace HmmRevive
             Say(chat, player, $"You drive [ffcc00]{CarName(player.CharacterId)}[-]. Type /car NAME or /car NUMBER (or /car random) to swap when you next die or between rounds:");
             for (int i = 0; i < cars.Length; i += 6)
                 Say(chat, player, string.Join(", ", cars.Skip(i).Take(6).ToArray()));
+            Say(chat, player, "Skins: /skins lists your car's skins, /skin NUMBER (or /skin random) changes it.");
+        }
+
+        // The car the player will drive next: a pending swap's, else the current one.
+        private static int NextCar(PlayerData player)
+        {
+            Want want;
+            return Pending.TryGetValue(player.PlayerCarId, out want) ? want.Car : player.CharacterId;
+        }
+
+        private static void ListSkins(ChatService chat, PlayerData player)
+        {
+            int car = NextCar(player);
+            List<IItemType> skins = CarChoice.SkinsOf(GameHubBehaviour.Hub.InventoryColletion.GetCharacterGuidId(car));
+            Guid current = car == player.CharacterId ? SkinOrDefault(car, player.Customizations.GetGuidBySlot(PlayerCustomizationSlot.Skin)) : Guid.Empty;
+            var names = skins.Select((s, i) =>
+            {
+                bool worn = SkinOrDefault(car, s.Id) == current;
+                return (worn ? "[ffcc00]" : "") + i + " " + CarChoice.SkinName(s) + (worn ? "[-]" : "");
+            }).ToArray();
+            Say(chat, player, $"Skins for {CarName(car)} (type /skin NUMBER, /skin random, or /skin 0 for the original):");
+            for (int i = 0; i < names.Length; i += 4)
+                Say(chat, player, string.Join(", ", names.Skip(i).Take(4).ToArray()));
+        }
+
+        private static void RequestSkin(ChatService chat, PlayerData player, string wish)
+        {
+            int car = NextCar(player);
+            IItemType skin = CarChoice.ResolveSkin(wish, GameHubBehaviour.Hub.InventoryColletion.GetCharacterGuidId(car));
+            if (skin == null)
+            {
+                Say(chat, player, $"No skin of {CarName(car)} matches '{wish}'. Type /skins for the list.");
+                return;
+            }
+            SkinWishes[player.Name] = wish;
+            Guid id = SkinOrDefault(car, skin.Id);
+            if (car == player.CharacterId && id == SkinOrDefault(car, player.Customizations.GetGuidBySlot(PlayerCustomizationSlot.Skin)))
+            {
+                Pending.Remove(player.PlayerCarId);
+                Say(chat, player, $"You already wear {CarChoice.SkinName(skin)}.");
+                return;
+            }
+            Queue(player, new Want(car, id));
+            Log.Info($"SKIN request {player.Name} {CarName(car)} -> {skin.Name}");
+            Say(chat, player, $"Your {CarName(car)} gets the [ffcc00]{CarChoice.SkinName(skin)}[-] skin when you next die or between rounds.");
+        }
+
+        // Guid.Empty for the car's default skin (what the game itself uses for bots).
+        private static Guid SkinOrDefault(int car, Guid skin)
+        {
+            IItemType def = GameHubBehaviour.Hub.InventoryColletion.GetDefaultSkin(GameHubBehaviour.Hub.InventoryColletion.GetCharacterGuidId(car));
+            return def != null && def.Id == skin ? Guid.Empty : skin;
+        }
+
+        // The skin a player gets on a car they swap to: their /skin wish, else the launcher's, resolved for that car.
+        private static Guid SkinFor(PlayerData player, int car)
+        {
+            if (player.IsBot) return Guid.Empty;
+            string wish;
+            if (!SkinWishes.TryGetValue(player.Name, out wish)) wish = CarChoice.SkinWish(player);
+            if (wish == null) return Guid.Empty;
+            IItemType skin = CarChoice.ResolveSkin(wish, GameHubBehaviour.Hub.InventoryColletion.GetCharacterGuidId(car));
+            return skin == null ? Guid.Empty : SkinOrDefault(car, skin.Id);
+        }
+
+        // Queues a swap and starts loading its skin model on the server and every client.
+        private static void Queue(PlayerData player, Want want)
+        {
+            Pending[player.PlayerCarId] = want;
+            if (want.Skin == Guid.Empty) return;
+            HMMHub hub = GameHubBehaviour.Hub;
+            string asset = SkinAssetName(hub.InventoryColletion.GetCharacterGuidId(want.Car), want.Skin);
+            if (!SkinReady(asset))
+                hub.Chat.DispatchReliable(hub.AddressGroups.GetGroup(0)).ClientReceiveMessage(false, $"{Marker}load:{asset}", 0);
         }
 
         private static void RequestCar(ChatService chat, PlayerData player, string want)
@@ -217,7 +329,7 @@ namespace HmmRevive
                 Say(chat, player, $"You already drive {CarName(id)}.");
                 return;
             }
-            Pending[player.PlayerCarId] = id;
+            Queue(player, new Want(id, SkinFor(player, id)));
             Log.Info($"SWAP request {player.Name} {CarName(player.CharacterId)} -> {CarName(id)}");
             Say(chat, player, $"You'll switch to [ffcc00]{CarName(id)}[-] when you next die or between rounds.");
         }
@@ -254,8 +366,14 @@ namespace HmmRevive
                 }
                 else if (body.StartsWith("swap:", StringComparison.Ordinal))
                 {
+                    // swap:<car object id>:<character id>[:<skin id>] (servers before skins sent no skin)
                     string[] p = body.Substring(5).Split(':');
-                    ClientQueue.Enqueue(new KeyValuePair<int, int>(int.Parse(p[0]), int.Parse(p[1])));
+                    Guid skin = p.Length > 2 ? new Guid(p[2]) : Guid.Empty;
+                    ClientQueue.Enqueue(new KeyValuePair<int, Want>(int.Parse(p[0]), new Want(int.Parse(p[1]), skin)));
+                }
+                else if (body.StartsWith("load:", StringComparison.Ordinal))
+                {
+                    SkinReady(body.Substring(5)); // a skin swap is coming: start loading its model now
                 }
             }
             catch (Exception e)
@@ -314,11 +432,17 @@ namespace HmmRevive
                 // Between rounds: every car sits locked at its start position until the countdown ends.
                 bool betweenRounds = phase == BombScoreboardState.Shop && spawn.State == SpawnStateKind.Spawned;
                 if (!dead && !betweenRounds) continue;
+                Want want = request.Value;
+                if (want.Skin != Guid.Empty && !SkinReady(SkinAssetName(hub.InventoryColletion.GetCharacterGuidId(want.Car), want.Skin))) continue;
                 Pending.Remove(request.Key);
-                string from = CarName(player.CharacterId);
-                if (!Rebuild(player, request.Value)) continue;
-                hub.Chat.DispatchReliable(hub.AddressGroups.GetGroup(0)).ClientReceiveMessage(false, $"{Marker}swap:{request.Key}:{request.Value}", 0);
-                if (!player.IsBot) SayAll(hub.Chat, $"{player.Name} swapped {from} for [ffcc00]{CarName(request.Value)}[-]");
+                int fromCar = player.CharacterId;
+                string from = CarName(fromCar);
+                if (!Rebuild(player, want.Car, want.Skin)) continue;
+                if (fromCar != want.Car) ReorderGrid(hub, player.Team);
+                hub.Chat.DispatchReliable(hub.AddressGroups.GetGroup(0)).ClientReceiveMessage(false, $"{Marker}swap:{request.Key}:{want.Car}:{want.Skin}", 0);
+                if (player.IsBot) continue;
+                if (fromCar != want.Car) SayAll(hub.Chat, $"{player.Name} swapped {from} for [ffcc00]{CarName(want.Car)}[-]");
+                else Say(hub.Chat, player, $"Skin changed to [ffcc00]{SkinLabel(want.Skin)}[-].");
             }
         }
 
@@ -326,6 +450,14 @@ namespace HmmRevive
         private static void Chaos(HMMHub hub, BombScoreboardState phase)
         {
             bool roundStart = phase == BombScoreboardState.Shop && _lastPhase != BombScoreboardState.Shop;
+            // Check that the cars lined up on their role slots (ReorderGrid) when the countdown ends.
+            if (phase != BombScoreboardState.Shop && _lastPhase == BombScoreboardState.Shop)
+            {
+                var level = Object.FindObjectOfType<LevelSpawn>();
+                if (level != null)
+                    Log.Info("CHAOS start line: " + string.Join(" ", hub.Players.PlayersAndBots.Where(p => p.CharacterInstance != null).OrderBy(p => p.Team).ThenBy(p => p.GridIndex)
+                        .Select(p => $"{p.Team}{p.GridIndex}={p.Name}({p.GetCharacterRole()},off={Vector3.Distance(p.CharacterInstance.transform.position, level.GetStart(p).position):0.0})").ToArray()));
+            }
             foreach (PlayerData p in hub.Players.PlayersAndBots)
             {
                 SpawnController spawn = p.CharacterInstance?.GetBitComponent<SpawnController>();
@@ -335,7 +467,7 @@ namespace HmmRevive
                 if (!newDeath && !roundStart) continue;
                 if (newDeath) ChaosSeen[p.PlayerCarId] = spawn.UnspawnTime;
                 int id = Entry.ChaosCars == null ? RandomCar(p.CharacterId) : ChaosCar(p.CharacterId);
-                if (id >= 0 && !Pending.ContainsKey(p.PlayerCarId)) Pending[p.PlayerCarId] = id;
+                if (id >= 0 && !Pending.ContainsKey(p.PlayerCarId)) Queue(p, new Want(id, SkinFor(p, id)));
             }
         }
 
@@ -359,7 +491,7 @@ namespace HmmRevive
                     _autoChatAt = float.MaxValue;
                 }
             }
-            while (ClientQueue.Count > 0)
+            for (int n = ClientQueue.Count; n > 0; n--)
             {
                 var swap = ClientQueue.Dequeue();
                 PlayerData player = hub.Players.PlayersAndBots.FirstOrDefault(p => p.PlayerCarId == swap.Key);
@@ -368,8 +500,17 @@ namespace HmmRevive
                     Log.Error($"car swap: no player with car {swap.Key}");
                     continue;
                 }
-                if (player.CharacterId == swap.Value && player.Character != null && player.Character.CharacterId == swap.Value) continue;
-                if (!Rebuild(player, swap.Value)) continue;
+                Want want = swap.Value;
+                if (player.CharacterId == want.Car && player.Character != null && player.Character.CharacterId == want.Car
+                    && player.Customizations.GetGuidBySlot(PlayerCustomizationSlot.Skin) == want.Skin) continue;
+                // Wait for the skin model; requeued behind any later swap, which is fine as the server only sends a car's
+                // next swap after its previous one (at least one death or round apart).
+                if (want.Skin != Guid.Empty && !SkinReady(SkinAssetName(hub.InventoryColletion.GetCharacterGuidId(want.Car), want.Skin)))
+                {
+                    ClientQueue.Enqueue(swap);
+                    continue;
+                }
+                if (!Rebuild(player, want.Car, want.Skin)) continue;
                 RefreshIcons(hub, player);
                 if (player.IsCurrentPlayer) RefreshOwnHud(hub, player);
             }
@@ -413,6 +554,26 @@ namespace HmmRevive
             return info.TakeoffGadgets != null && arena >= 0 && arena < info.TakeoffGadgets.Length ? info.TakeoffGadgets[arena] : null;
         }
 
+        // Gadget bodies that follow a dummy of the car (AttachToDummyBodyMovement, e.g. one Black Lotus leaves running after
+        // death) read the old model's dummy every frame; once it is destroyed that throws until the body ends (~1 min).
+        // Point them at the same dummy on the new model.
+        private static readonly Type AttachToDummy = typeof(HeavyMetalMachines.Combat.GadgetScript.Body.GadgetBody).Assembly.GetType("HeavyMetalMachines.Combat.GadgetScript.Body.AttachToDummyBodyMovement");
+
+        private static void RetargetDummyBodies(CombatObject combat)
+        {
+            if (AttachToDummy == null || combat.Dummy == null) return;
+            FieldInfo target = AttachToDummy.GetField("_dummyTransform", Any), owner = AttachToDummy.GetField("_combatObject", Any);
+            FieldInfo kind = AttachToDummy.GetField("_dummyKind", Any), custom = AttachToDummy.GetField("_customDummyName", Any);
+            foreach (Object body in Object.FindObjectsOfType(AttachToDummy))
+            {
+                if (!ReferenceEquals(owner.GetValue(body), combat)) continue;
+                var dummy = target.GetValue(body) as Transform;
+                if (dummy != null || ReferenceEquals(dummy, null)) continue; // still alive, or never initialized
+                target.SetValue(body, combat.Dummy.GetDummy((CDummy.DummyKind)kind.GetValue(body), (string)custom.GetValue(body)));
+                Log.Info($"car swap: gadget body {body.name} follows the new model");
+            }
+        }
+
         // Overlay effects (SurfaceEffectVFX, e.g. Zephyr's, still running on a dead car) keep the renderers of the model
         // they were started on and draw them every LateUpdate; after the model is destroyed that throws every frame
         // until the effect ends. Drop the destroyed renderers from every running overlay.
@@ -433,7 +594,14 @@ namespace HmmRevive
         }
 
         // Re-runs the character-dependent half of PlayerCarFactory.CreateCar on an existing car.
-        private static bool Rebuild(PlayerData player, int charId)
+        private static string SkinLabel(Guid skin)
+        {
+            IItemType item;
+            if (skin == Guid.Empty || !GameHubBehaviour.Hub.InventoryColletion.TryGet(skin, out item)) return "Original";
+            return CarChoice.SkinName(item);
+        }
+
+        private static bool Rebuild(PlayerData player, int charId, Guid skinId)
         {
             var started = DateTime.Now;
             HMMHub hub = GameHubBehaviour.Hub;
@@ -460,7 +628,7 @@ namespace HmmRevive
 
                 player.SetCharacter(item.Id, hub.InventoryColletion);
                 player.Character = info;
-                player.Customizations.SetGuidAndSlot(PlayerCustomizationSlot.Skin, Guid.Empty); // default skin of the new car
+                player.Customizations.SetGuidAndSlot(PlayerCustomizationSlot.Skin, skinId); // Guid.Empty = the car's default skin
 
                 RemoveGadgets(combat, server);
                 ReplaceColliders(car, old, info);
@@ -483,7 +651,7 @@ namespace HmmRevive
                 if (oldRender != null) Object.DestroyImmediate(oldRender.gameObject);
                 if (client) PruneSurfaceEffects();
 
-                string asset = SkinAssetName(item.Id);
+                string asset = SkinAssetName(item.Id, skinId);
                 var prefab = (Transform)Loading.Content.GetAsset(asset).Asset;
                 Transform render = container.InstantiatePrefab(prefab, car.transform).transform;
                 CarSkin skin = render.GetComponent<CarSkin>();
@@ -501,6 +669,7 @@ namespace HmmRevive
                 carHub.carGenerator = generator;
                 carHub.dummy = dummy;
                 combat.Dummy = dummy;
+                RetargetDummyBodies(combat);
                 if (generator != null)
                 {
                     generator.carComponentHub = carHub;
@@ -560,7 +729,7 @@ namespace HmmRevive
                     p.y = 10000f;
                     render.localPosition = p;
                 }
-                Log.Info($"SWAP {player.Name} car={car.ObjId} {old?.name} -> {info.name} alive={combat.IsAlive()} state={spawn.State} in {(DateTime.Now - started).TotalMilliseconds:0}ms");
+                Log.Info($"SWAP {player.Name} car={car.ObjId} {old?.name} -> {info.name} skin={asset} alive={combat.IsAlive()} state={spawn.State} in {(DateTime.Now - started).TotalMilliseconds:0}ms");
                 return true;
             }
             catch (Exception e)
@@ -707,12 +876,51 @@ namespace HmmRevive
                     gadgets.SetCombatDataAndPopulateUI(player.CharacterInstance.GetBitComponent<CombatData>());
                 }
                 hub.GuiScripts.DriverHelper.Setup(hub.InventoryColletion.AllItemTypes[player.Character.CharacterItemTypeGuid], hub.State.Current);
+                // Weapon details window (ESC menu / help shortcut): GameGui gives it the car once, when the match starts.
+                var gui = Object.FindObjectOfType<GameGui>();
+                var help = gui != null ? Field<HeavyMetalMachines.CharacterHelp.Presenting.ICharacterHelpPresenter>(gui, "_characterHelpPresenter") : null;
+                if (help != null)
+                {
+                    help.Set(player.CharacterItemType.Id);
+                    Log.Info("weapon details window now shows " + CarName(player.CharacterId));
+                }
             }
             catch (Exception e)
             {
                 Log.Error("car swap: HUD refresh failed: " + e);
             }
         }
+
+        // Start and respawn slots (LevelSpawn by PlayerData.GridIndex) are ordered by role once, at car selection
+        // (LegacySetMatchPlayersPicks: Transporters, then Supports, then Interceptors, humans before bots within a role),
+        // and each car's SpawnController keeps the slot it got when it was created. Redo both for the team after a swap
+        // so the new car's role decides where it spawns. Server only: positions come from the server.
+        private static void ReorderGrid(HMMHub hub, TeamKind team)
+        {
+            var level = Object.FindObjectOfType<LevelSpawn>();
+            List<PlayerData> mates = hub.Players.PlayersAndBots.Where(p => p.Team == team && p.GridIndex >= 0)
+                .OrderByDescending(p => RoleOrder(p.GetCharacterRole())).ThenBy(p => p.IsBot ? 1 : 0).ThenBy(p => p.GridIndex).ToList();
+            var order = new List<string>();
+            for (int i = 0; i < mates.Count; i++)
+            {
+                PlayerData p = mates[i];
+                order.Add($"{i}={p.Name}({p.GetCharacterRole()})");
+                if (p.GridIndex == i) continue;
+                p.GridIndex = i;
+                SpawnController spawn = p.CharacterInstance?.GetBitComponent<SpawnController>();
+                if (spawn == null || level == null) continue;
+                spawn.StartPosition = level.GetStart(p);
+                spawn.SpawnPosition = level.GetSpawn(p);
+                // During the between-rounds countdown the cars already stand on the start line: move to the new slot the
+                // way BombScoreController.RepositionPlayers does at the round start.
+                if (hub.BombManager.CurrentBombGameState == BombScoreboardState.Shop && spawn.State == SpawnStateKind.Spawned)
+                    p.CharacterInstance.GetBitComponent<CombatObject>().Movement.ForcePositionAndRotation(spawn.StartPosition.position, spawn.StartPosition.rotation);
+            }
+            Log.Info($"GRID {team}: " + string.Join(" ", order.ToArray()));
+        }
+
+        private static int RoleOrder(DriverRoleKind role) =>
+            role == DriverRoleKind.Carrier ? 100 : role == DriverRoleKind.Support ? 10 : role == DriverRoleKind.Tackler ? 1 : 0;
 
         // Car portraits: top bar (HudPlayersObject), Tab scoreboard (HudTabPlayer) and minimap (HudMinimapPlayerObject).
         private static void RefreshIcons(HMMHub hub, PlayerData player)
