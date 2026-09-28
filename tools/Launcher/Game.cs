@@ -1,0 +1,491 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace HmmRevive.Launcher
+{
+    /// <summary>Where things are: the kit layout (exe next to instance\, mod\, Patcher.exe, skins.txt) or this repo's.</summary>
+    public static class Paths
+    {
+        public static string Root, Instance, Settings;
+
+        public static void Init(string root, string instanceName)
+        {
+            string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+            Root = root ?? FindRoot(exeDir);
+            Instance = Path.Combine(Root, instanceName);
+            Settings = Path.Combine(Root, "launcher-settings.json");
+        }
+
+        // The folder that holds instance\ (or the kit's mod\ before setup); the repo's build\launcher\ looks two levels up.
+        private static string FindRoot(string dir)
+        {
+            for (string d = dir; d != null; d = Path.GetDirectoryName(d))
+                if (Directory.Exists(Path.Combine(d, "instance")) || File.Exists(Path.Combine(d, "Patcher.exe")) || File.Exists(Path.Combine(d, "VERSION")))
+                    return d;
+            return dir;
+        }
+
+        public static string GameExe => Path.Combine(Instance, "HMM.exe");
+        public static string LauncherExe => Process.GetCurrentProcess().MainModule.FileName;
+        public static string Patcher => First(Path.Combine(Root, "Patcher.exe"));
+        public static string ModDir => Directory.Exists(Path.Combine(Root, "mod")) && File.Exists(Path.Combine(Root, "mod", "HmmRevive.dll"))
+            ? Path.Combine(Root, "mod") : Path.Combine(Root, "build", "mod");
+        public static string SkinsFile => First(Path.Combine(Root, "skins.txt"), Path.Combine(Root, "launcher", "skins.txt"));
+
+        private static string First(params string[] candidates) => candidates.FirstOrDefault(File.Exists);
+
+        /// <summary>The game's native logger crashes HMM.exe under a path with non-ASCII letters.</summary>
+        public static bool PathIsPlain => !Regex.IsMatch(Root, @"[^\x20-\x7E]");
+
+        public static bool GameReady => File.Exists(GameExe);
+    }
+
+    /// <summary>Launcher settings (launcher-settings.json next to the kit): player, display and host choices.</summary>
+    public static class Settings
+    {
+        private static readonly object Gate = new object();
+        public static Dictionary<string, object> Data = new Dictionary<string, object>();
+
+        public static void Load()
+        {
+            lock (Gate)
+            {
+                try { if (File.Exists(Paths.Settings)) Data = Js.Read(File.ReadAllText(Paths.Settings)); }
+                catch (Exception e) { Program.Log("settings unreadable, starting fresh: " + e.Message); }
+                if (!Data.ContainsKey("name")) Import();
+                Default("name", Environment.UserName);
+                Default("car", "1");
+                Default("skins", new Dictionary<string, object>());
+                Default("width", 0);
+                Default("height", 0);
+                Default("fullscreen", true);
+                Default("recent", new object[0]);
+                Default("host", new Dictionary<string, object>());
+                Data["name"] = CleanName(Data.Str("name")) ?? "Player";
+            }
+        }
+
+        private static void Default(string k, object v)
+        {
+            if (!Data.ContainsKey(k) || Data[k] == null) Data[k] = v;
+        }
+
+        // First run: take name, car and skins from the .bat launchers' settings.
+        private static void Import()
+        {
+            foreach (string f in new[] { Path.Combine(Paths.Root, "play-settings.json"), Path.Combine(Paths.Root, "launcher", "settings.json") })
+            {
+                if (!File.Exists(f)) continue;
+                try
+                {
+                    var old = Js.Read(File.ReadAllText(f));
+                    if (old.Str("Name") != null) Data["name"] = old.Str("Name");
+                    if (!string.IsNullOrEmpty(old.Str("Car"))) Data["car"] = Catalog.CarId(old.Str("Car"))?.ToString() ?? "1";
+                    if (old.Obj("Skins") != null) Data["skins"] = old.Obj("Skins");
+                    if (old.Int("Width") > 0) { Data["width"] = old.Int("Width"); Data["height"] = old.Int("Height"); }
+                    if (old.ContainsKey("Fullscreen")) Data["fullscreen"] = old.Bool("Fullscreen", true);
+                    Program.Log("imported settings from " + f);
+                    return;
+                }
+                catch { }
+            }
+        }
+
+        public static void Save()
+        {
+            lock (Gate)
+            {
+                try { File.WriteAllText(Paths.Settings, Js.Write(Data)); }
+                catch (Exception e) { Program.Log("can't save settings: " + e.Message); }
+            }
+        }
+
+        public static void Set(string key, object value)
+        {
+            lock (Gate) Data[key] = value;
+            Save();
+        }
+
+        public static void AddRecent(string address)
+        {
+            lock (Gate)
+            {
+                var list = Data.List("recent").Select(o => o.ToString()).Where(a => !a.Equals(address, StringComparison.OrdinalIgnoreCase)).ToList();
+                list.Insert(0, address);
+                Data["recent"] = list.Take(8).ToArray();
+            }
+            Save();
+        }
+
+        /// <summary>Player names travel in the login ("name#car#skin#team") and in file names: letters, digits, - and _.</summary>
+        public static string CleanName(string name)
+        {
+            if (name == null) return null;
+            string n = Regex.Replace(name, @"[^A-Za-z0-9_\-]", "");
+            if (n.Length > 16) n = n.Substring(0, 16);
+            return n.Length == 0 ? null : n;
+        }
+
+        public static string SkinFor(string carId)
+        {
+            string car = Catalog.CarName(carId);
+            var skins = Data.Obj("skins");
+            return (car != null ? skins.Str(car) : null) ?? "0";
+        }
+    }
+
+    /// <summary>Cars and skins from skins.txt ("carId TAB car TAB number TAB skin"), arenas from the game's arena config.</summary>
+    public static class Catalog
+    {
+        public class Car { public int Id; public string Name; public List<string> Skins = new List<string>(); }
+
+        public static readonly List<Car> Cars = new List<Car>();
+
+        public static readonly object[] Arenas =
+        {
+            new Dictionary<string, object> { ["id"] = 1, ["name"] = "Legacy: Temple of Sacrifice" },
+            new Dictionary<string, object> { ["id"] = 2, ["name"] = "Metal God Arena" },
+            new Dictionary<string, object> { ["id"] = 3, ["name"] = "Cursed Necropolis" },
+            new Dictionary<string, object> { ["id"] = 4, ["name"] = "Sacrifice Sanctuary" },
+            new Dictionary<string, object> { ["id"] = 13, ["name"] = "Sacrifice Sanctuary (alpha version)" },
+            new Dictionary<string, object> { ["id"] = 5, ["name"] = "Arena Void (test map)" },
+        };
+
+        public static void Load()
+        {
+            Cars.Clear();
+            string file = Paths.SkinsFile;
+            if (file != null)
+                foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
+                {
+                    string[] f = line.Split('\t');
+                    if (f.Length < 4 || !int.TryParse(f[0], out int id)) continue;
+                    Car car = Cars.FirstOrDefault(c => c.Id == id);
+                    if (car == null) Cars.Add(car = new Car { Id = id, Name = f[1] });
+                    car.Skins.Add(f[3]);
+                }
+            if (Cars.Count == 0) // no skins.txt: the car list the .bat launchers had
+                foreach (var (id, name) in new[] { (1, "Stingray"), (2, "Black Lotus"), (3, "Artificer"), (4, "Rampage"), (5, "Dirt Devil"),
+                    (6, "Wildfire"), (7, "Full Metal Judge"), (8, "Windrider"), (9, "Icebringer"), (10, "Metal Herald"), (13, "Little Monster"),
+                    (14, "Clunker"), (15, "Stargazer"), (16, "Peacemaker"), (17, "Vulture"), (18, "Calamity"), (19, "Photon"), (20, "Killer J.") })
+                    Cars.Add(new Car { Id = id, Name = name, Skins = { "Original" } });
+        }
+
+        public static string CarName(string id) => int.TryParse(id, out int i) ? Cars.FirstOrDefault(c => c.Id == i)?.Name : null;
+
+        /// <summary>Car id from an id, a name or part of one ("fmj" won't work, "full metal" will).</summary>
+        public static int? CarId(string want)
+        {
+            if (string.IsNullOrWhiteSpace(want)) return null;
+            if (int.TryParse(want, out int i)) return Cars.Any(c => c.Id == i) ? i : (int?)null;
+            string k = Regex.Replace(want, @"[\s'._]", "").ToLowerInvariant();
+            Car hit = Cars.FirstOrDefault(c => Regex.Replace(c.Name, @"[\s'._]", "").ToLowerInvariant() == k)
+                      ?? Cars.FirstOrDefault(c => Regex.Replace(c.Name, @"[\s'._]", "").ToLowerInvariant().Contains(k));
+            return hit?.Id;
+        }
+
+        public static object ToJson() => new Dictionary<string, object>
+        {
+            ["cars"] = Cars.Select(c => new Dictionary<string, object> { ["id"] = c.Id, ["name"] = c.Name, ["skins"] = c.Skins.ToArray() }).ToArray(),
+            ["arenas"] = Arenas,
+        };
+    }
+
+    /// <summary>Starting and watching HMM.exe: the match server (host) and this player's game.</summary>
+    public static class Game
+    {
+        public static Process Server, Client;
+        public static bool TestBackground; // --test-background: hidden, muted clients (automated tests)
+
+        public static string ModVersion(string dll)
+        {
+            if (!File.Exists(dll)) return null;
+            string v = FileVersionInfo.GetVersionInfo(dll).ProductVersion;
+            return Regex.IsMatch(v ?? "", @"^\d+\.\d+$") ? v : "pre-1.0";
+        }
+
+        public static string KitVersion => ModVersion(Path.Combine(Paths.ModDir, "HmmRevive.dll"));
+        public static string GameVersion => ModVersion(Path.Combine(Paths.Instance, "HMM_Data", "Managed", "HmmRevive.dll"));
+
+        public static bool Running(Process p)
+        {
+            try { return p != null && !p.HasExited; } catch { return false; }
+        }
+
+        private static string Quote(string a) => a.IndexOf(' ') >= 0 ? "\"" + a + "\"" : a;
+
+        private static Process Start(List<string> args, bool hidden)
+        {
+            var psi = new ProcessStartInfo(Paths.GameExe, string.Join(" ", args.Select(Quote)))
+            {
+                WorkingDirectory = Paths.Instance,
+                UseShellExecute = false,
+                CreateNoWindow = hidden,
+            };
+            if (hidden) psi.WindowStyle = ProcessWindowStyle.Hidden;
+            Process p = Process.Start(psi);
+            Program.Log($"started HMM.exe pid={p.Id}: {psi.Arguments}");
+            return p;
+        }
+
+        public class ServerOptions
+        {
+            public int Port = 9696, Players = 1, Arena = 1, Score = 0, RedBots, BluBots, EndQuit = 30;
+            public string RedDifficulty = "auto", BluDifficulty = "auto", RedBotCars = "", BluBotCars = "";
+        }
+
+        /// <summary>Headless match server, the same command line as tools/run_server.ps1.</summary>
+        public static Process StartServer(ServerOptions o)
+        {
+            StopServer();
+            File.Delete(Path.Combine(Paths.Instance, $"hmmrevive-server-{o.Port}.log"));
+            var a = new List<string> { "-batchmode", "-nographics" };
+            if (o.Score > 0) a.Add("--hmmrevive-score=" + o.Score);
+            a.Add("--hmmrevive-end-quit=" + o.EndQuit);
+            if (o.RedBotCars != "") a.Add("--hmmrevive-bot-cars-red=" + o.RedBotCars);
+            if (o.BluBotCars != "") a.Add("--hmmrevive-bot-cars-blue=" + o.BluBotCars);
+            if (o.RedDifficulty != "auto") a.Add("--hmmrevive-difficulty-red=" + o.RedDifficulty);
+            if (o.BluDifficulty != "auto") a.Add("--hmmrevive-difficulty-blue=" + o.BluDifficulty);
+            a.AddRange(new[] { "-logFile", Path.Combine(Paths.Instance, $"server_unity_{o.Port}.log"), "--hmmrevive-server", "--Drafter=0",
+                "BeginConfig", "[Debug]", "SkipSwordfish=true", "IsDebug=true",
+                "[Game]", "PlayerCount=" + o.Players, "ArenaIndex=" + o.Arena, "RedTeamBotsCount=" + o.RedBots, "BluTeamBotsCount=" + o.BluBots,
+                "AllPlayersOnBluTeam=false", "[Server]", "Port=" + o.Port, "EndConfig" });
+            Server = Start(a, true);
+            try { Server.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+            return Server;
+        }
+
+        public static void StopServer()
+        {
+            if (Running(Server)) { try { Server.Kill(); Server.WaitForExit(3000); } catch { } }
+            Server = null;
+        }
+
+        /// <summary>True once the server listens on its UDP port (it takes ~20-30 s to load).</summary>
+        public static bool ServerListening(int port) =>
+            Running(Server) && IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners().Any(e => e.Port == port);
+
+        /// <summary>This player's game in direct-connect mode, like play.bat. Team is "red", "blue" or null.</summary>
+        public static Process StartClient(string ip, int port, string team, int score)
+        {
+            StopClient();
+            string name = Settings.Data.Str("name");
+            string car = Settings.Data.Str("car");
+            string skin = Settings.SkinFor(car);
+            var a = new List<string>();
+            if (TestBackground) a.AddRange(new[] { "-batchmode", "--hmmrevive-mute" });
+            a.AddRange(new[] { "-logFile", Path.Combine(Paths.Instance, $"client_{name}.log") });
+            if (score > 0) a.Add("--hmmrevive-score=" + score);
+            if (!string.IsNullOrEmpty(car)) a.Add("--hmmrevive-car=" + car);
+            if (skin != "0") a.Add("--hmmrevive-skin=" + Regex.Replace(skin, @"[\s#""']", ""));
+            if (team == "red" || team == "blue") a.Add("--hmmrevive-team=" + team);
+            int w = Settings.Data.Int("width"), h = Settings.Data.Int("height");
+            if (w > 0 && h > 0) a.AddRange(new[] { "-screen-width", w.ToString(), "-screen-height", h.ToString() });
+            a.AddRange(new[] { "-screen-fullscreen", Settings.Data.Bool("fullscreen", true) ? "1" : "0" });
+            a.AddRange(new[] { "BeginConfig", "[Debug]", "SkipSwordfish=true", "DirectMatch=true", "PlayerName=" + name,
+                "[Server]", "IP=" + ip, "Port=" + port, "EndConfig" });
+            Client = Start(a, TestBackground);
+            return Client;
+        }
+
+        public static void StopClient()
+        {
+            if (Running(Client)) { try { Client.Kill(); Client.WaitForExit(3000); } catch { } }
+            Client = null;
+        }
+
+        // --- setup (kit): patch the Steam install into .\instance ---
+        public static volatile string SetupStatus = ""; // "", "running", "done", "failed: ..."
+        public static readonly StringBuilder SetupLog = new StringBuilder();
+
+        public static string FindSteamGame()
+        {
+            var candidates = new List<string>();
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
+                {
+                    string steam = key?.GetValue("SteamPath") as string;
+                    if (steam != null)
+                    {
+                        candidates.Add(Path.Combine(steam, "steamapps", "common", "Heavy Metal Machines"));
+                        string vdf = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
+                        if (File.Exists(vdf))
+                            foreach (Match m in Regex.Matches(File.ReadAllText(vdf), "\"path\"\\s+\"([^\"]+)\""))
+                                candidates.Add(Path.Combine(m.Groups[1].Value.Replace(@"\\", @"\"), "steamapps", "common", "Heavy Metal Machines"));
+                    }
+                }
+            }
+            catch { }
+            return candidates.FirstOrDefault(c => File.Exists(Path.Combine(c, "HMM.exe")));
+        }
+
+        public static void RunSetup(string gameDir)
+        {
+            if (SetupStatus == "running") return;
+            SetupStatus = "running";
+            lock (SetupLog) SetupLog.Clear();
+            new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    if (Running(Client) || Running(Server)) throw new Exception("close the game and stop the match first");
+                    if (Paths.Patcher == null) throw new Exception("Patcher.exe is missing next to HMM-Revive.exe");
+                    if (gameDir == null || !File.Exists(Path.Combine(gameDir, "HMM.exe"))) throw new Exception("Heavy Metal Machines not found in '" + gameDir + "'");
+                    var psi = new ProcessStartInfo(Paths.Patcher, $"\"{gameDir}\" \"{Paths.Instance}\" \"{Paths.ModDir}\"")
+                    { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+                    using (Process p = Process.Start(psi))
+                    {
+                        p.OutputDataReceived += (s, e) => { if (e.Data != null) lock (SetupLog) SetupLog.AppendLine(e.Data); };
+                        p.ErrorDataReceived += (s, e) => { if (e.Data != null) lock (SetupLog) SetupLog.AppendLine(e.Data); };
+                        p.BeginOutputReadLine();
+                        p.BeginErrorReadLine();
+                        p.WaitForExit();
+                        if (p.ExitCode != 0) throw new Exception("patcher exit code " + p.ExitCode);
+                    }
+                    SetupStatus = "done";
+                }
+                catch (Exception e)
+                {
+                    SetupStatus = "failed: " + e.Message;
+                }
+                Program.Log("setup: " + SetupStatus);
+            }) { IsBackground = true }.Start();
+        }
+    }
+
+    /// <summary>This PC's addresses on the networks players use (Tailscale 100.64.0.0/10, ZeroTier, LAN).</summary>
+    public static class Net
+    {
+        public static List<Dictionary<string, object>> Addresses()
+        {
+            var list = new List<Dictionary<string, object>>();
+            foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up || ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                foreach (UnicastIPAddressInformation u in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (u.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    byte[] b = u.Address.GetAddressBytes();
+                    if (b[0] == 169 && b[1] == 254) continue;
+                    string kind = b[0] == 100 && (b[1] & 0xC0) == 64 ? "Tailscale"
+                        : ni.Description.IndexOf("ZeroTier", StringComparison.OrdinalIgnoreCase) >= 0 || ni.Name.IndexOf("ZeroTier", StringComparison.OrdinalIgnoreCase) >= 0 ? "ZeroTier"
+                        : ni.Description.IndexOf("WireGuard", StringComparison.OrdinalIgnoreCase) >= 0 ? "WireGuard"
+                        : "LAN";
+                    list.Add(new Dictionary<string, object> { ["ip"] = u.Address.ToString(), ["kind"] = kind, ["mask"] = u.IPv4Mask?.ToString() });
+                }
+            }
+            return list.OrderBy(a => a["kind"] as string == "Tailscale" ? 0 : a["kind"] as string == "ZeroTier" ? 1 : 2).ToList();
+        }
+
+        /// <summary>Directed broadcast address of every IPv4 interface (ZeroTier and LANs carry broadcasts; Tailscale doesn't).</summary>
+        public static List<IPAddress> Broadcasts()
+        {
+            var list = new List<IPAddress> { IPAddress.Broadcast };
+            foreach (var a in Addresses())
+            {
+                if (a["mask"] == null || a["kind"] as string == "Tailscale") continue;
+                byte[] ip = IPAddress.Parse((string)a["ip"]).GetAddressBytes(), mask = IPAddress.Parse((string)a["mask"]).GetAddressBytes();
+                for (int i = 0; i < 4; i++) ip[i] = (byte)(ip[i] | ~mask[i]);
+                list.Add(new IPAddress(ip));
+            }
+            return list;
+        }
+
+        public static string TailscaleExe()
+        {
+            foreach (string p in new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Tailscale", "tailscale.exe"), @"C:\Program Files\Tailscale\tailscale.exe" })
+                if (File.Exists(p)) return p;
+            return null;
+        }
+
+        /// <summary>Online Tailscale peers' IPv4 addresses (`tailscale status --json`); empty without Tailscale.</summary>
+        public static List<string> TailscalePeers()
+        {
+            var ips = new List<string>();
+            string exe = TailscaleExe();
+            if (exe == null) return ips;
+            try
+            {
+                var psi = new ProcessStartInfo(exe, "status --json") { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8 };
+                using (Process p = Process.Start(psi))
+                {
+                    string json = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(3000);
+                    var peers = Js.Read(json).Obj("Peer");
+                    if (peers == null) return ips;
+                    foreach (var kv in peers)
+                    {
+                        var peer = kv.Value as Dictionary<string, object>;
+                        if (peer == null || !peer.Bool("Online")) continue;
+                        string ip = peer.List("TailscaleIPs").Select(o => o.ToString()).FirstOrDefault(s => s.Contains('.'));
+                        if (ip != null) ips.Add(ip);
+                    }
+                }
+            }
+            catch (Exception e) { Program.Log("tailscale status failed: " + e.Message); }
+            return ips;
+        }
+    }
+
+    /// <summary>Windows Firewall rules for hosting: game UDP, lobby TCP+UDP, from Tailscale and local subnets (ZeroTier, LAN).</summary>
+    public static class Firewall
+    {
+        public const string GameRule = "HMM Revive game", LobbyRule = "HMM Revive lobby", FindRule = "HMM Revive lobby discovery";
+
+        // netsh can read rules without admin. Its text is localized, so only the exit code and the (unlocalized) program
+        // path are used: a rule made for a kit in another folder doesn't count.
+        private static bool RuleExists(string name, string program)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("netsh", $"advfirewall firewall show rule name=\"{name}\" verbose") { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true };
+                using (Process p = Process.Start(psi))
+                {
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(5000);
+                    return p.ExitCode == 0 && output.IndexOf(program, StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+            }
+            catch { return false; }
+        }
+
+        public static bool Ready() => RuleExists(GameRule, Paths.GameExe) && RuleExists(LobbyRule, Paths.LauncherExe) && RuleExists(FindRule, Paths.LauncherExe);
+
+        public static volatile bool Cached;
+        public static void Refresh() => Cached = Ready();
+
+        /// <summary>Adds the rules in an elevated PowerShell (Windows asks for admin). Also disables inbound Block rules
+        /// Windows created for these two programs when someone pressed Cancel on its "allow access" popup: they win over
+        /// any Allow rule.</summary>
+        public static bool Setup(int gamePort, int lobbyPort)
+        {
+            string game = Paths.GameExe.Replace("'", "''"), me = Paths.LauncherExe.Replace("'", "''");
+            const string from = "-RemoteAddress LocalSubnet,100.64.0.0/10 -Action Allow -Profile Any";
+            string cmd =
+                $"Remove-NetFirewallRule -DisplayName '{GameRule}','{LobbyRule}','{FindRule}' -ErrorAction SilentlyContinue; " +
+                $"New-NetFirewallRule -DisplayName '{GameRule}' -Direction Inbound -Protocol UDP -LocalPort {gamePort} -Program '{game}' {from} | Out-Null; " +
+                $"New-NetFirewallRule -DisplayName '{LobbyRule}' -Direction Inbound -Protocol TCP -LocalPort {lobbyPort} -Program '{me}' {from} | Out-Null; " +
+                $"New-NetFirewallRule -DisplayName '{FindRule}' -Direction Inbound -Protocol UDP -LocalPort {lobbyPort} -Program '{me}' {from} | Out-Null; " +
+                $"Get-NetFirewallApplicationFilter | Where-Object {{ $_.Program -eq '{game}' -or $_.Program -eq '{me}' }} | Get-NetFirewallRule | " +
+                "Where-Object { $_.Action -eq 'Block' -and $_.Direction -eq 'Inbound' } | Disable-NetFirewallRule";
+            string enc = Convert.ToBase64String(Encoding.Unicode.GetBytes(cmd));
+            try
+            {
+                var psi = new ProcessStartInfo("powershell", "-NoProfile -EncodedCommand " + enc) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
+                using (Process p = Process.Start(psi)) p.WaitForExit(60000);
+            }
+            catch (Exception e) { Program.Log("firewall setup cancelled: " + e.Message); }
+            Refresh();
+            return Cached;
+        }
+    }
+}

@@ -7,48 +7,48 @@ What's new in this version: CHANGELOG.txt
 
 Everyone needs
   1. Heavy Metal Machines installed from Steam (it must be in your library).
-  2. Tailscale (https://tailscale.com/download), installed and signed in with any account.
+  2. A way to reach the host's PC: Tailscale (https://tailscale.com/download) or ZeroTier (https://www.zerotier.com),
+     installed and joined to the same network as the host. On the same home network you need neither.
 
-Once
+Start
   - Unzip this folder anywhere. The same drive as the game is best (no extra disk space used).
     The folder path must use plain letters only (no accents like g/c/a with marks): if your Windows user name has
     them, C:\Users\<name>\Downloads crashes the game, so use something like C:\HMM-Revive instead.
-  - Double-click setup.bat. It finds the game and builds a patched copy in .\instance.
-    Your Steam install is not changed.
+  - Double-click HMM-Revive.exe. The first time it offers to set up: it finds the game and builds a patched copy
+    in .\instance (your Steam install is not changed). A window opens with everything else:
+      Play      lobbies hosted on your network; click Join, or type the host's address.
+      Host      open your own lobby.
+      Settings  your name, car, skin, screen resolution.
+  - Keep the black HMM-Revive window open while you play; close it to quit the launcher.
 
-PLAYERS
-  - Accept the host's Tailscale invite link (once). Not needed if the host gives you a public relay address
-    (a server name that forwards the game to the host): then you don't need Tailscale at all, just type that address in play.bat.
-  - When the host says the server is up: double-click play.bat, then type the host's Tailscale IP
-    (100.x.y.z) or relay address, your name, a car and a skin. Your answers are remembered; just press Enter the next time.
-  - Skin: play.bat lists the skins of your car; type a number to wear one, or "random" (a different one every
-    match). 0 = the original look (the default, which the bots always wear).
-  - "Exit game" closes the game. For the next match, the host restarts the server and you run play.bat again.
+In a lobby
+  - Pick your team, car and skin, then click Ready. The host picks the arena, points to win and the bots (how many,
+    how hard, which cars). When everyone is ready the match starts (or when the host clicks Start), and every
+    player's game opens by itself.
+  - After the match everyone is back in the lobby: click Ready again for a rematch.
   - In a match, type /cars in chat to list cars and /car <name> to switch (happens while you are dead or between rounds).
     /skins lists your car's skins and /skin <number> changes it the same way.
 
 HOST (one person, on a PC that stays on during the match)
-  Once:
-  - Share your PC with each player: https://login.tailscale.com/admin/machines > the "..." menu of your PC >
+  - In HMM-Revive.exe, go to Host and click "Set up firewall" once (Windows asks for admin). It lets players in on
+    the game port (UDP 9696) and the lobby port (TCP and UDP 9697), from Tailscale and local networks only.
+  - Tailscale: share your PC with each player: https://login.tailscale.com/admin/machines > the "..." menu of your PC >
     Share... > send each player their own invite link. Sharing shows them this PC only, none of your others.
-  - Limit what they can reach to the game port: https://login.tailscale.com/admin/acls > replace the "grants"
-    section with the one below and save.
+    Then limit what they can reach to the game and lobby ports: https://login.tailscale.com/admin/acls > replace the
+    "grants" section with the one below and save.
         "grants": [
             { "src": ["autogroup:member"], "dst": ["*"], "ip": ["*"] },
-            { "src": ["autogroup:shared"], "dst": ["*"], "ip": ["udp:9696"] },
+            { "src": ["autogroup:shared"], "dst": ["*"], "ip": ["udp:9696", "tcp:9697", "udp:9697"] },
         ],
-    The first line keeps full access for you and your own devices; the second lets players reach only
-    UDP 9696 (the game) on the PC you shared.
-  - The first time you run host.bat it offers to add a Windows Firewall rule (UDP 9696, Tailscale addresses
-    only). Say yes and accept the admin prompt, or players can't connect.
-  Every match:
-  - Double-click host.bat, pick arena, number of human players and bots. For each team's bots you can pick their
-    cars, e.g. "wildfire, photon, peacemaker", or "random", or keep "default" (the game's usual line-up).
-    It shows your Tailscale IP: send it to the players. The match starts once all human players have joined.
-  - host.bat offers to start your own game too. Points to win are always 3.
-  - After the match, run host.bat again for a new one. stop.bat stops the server and the game.
-  - Up to 8 cars per match (4 per team). Humans alternate Blue/Red in joining order, unless you pick
-    "all humans on the same team" (then up to 4 humans against bots).
+    The first line keeps full access for you and your own devices; the second lets players reach only the game
+    (UDP 9696) and the lobby (9697) on the PC you shared. If you set this up for an older kit with only "udp:9696",
+    add the two 9697 entries, or players can't join your lobby.
+  - ZeroTier: players join your network and you authorize them in its admin page.
+  - Click "Open lobby". Players on your network see it under Play; others can type the address shown in the lobby.
 
-Something went wrong? Tell them your version (top line of the setup/play/host window) and send the newest instance\hmmrevive-client-*.log (players) or
-instance\hmmrevive-server-9696.log and instance\server_unity_9696.log (host) to whoever gave you this kit.
+The old way (still works): host.bat starts a server from menus, play.bat joins one (also for relay addresses),
+stop.bat stops both. In HMM-Revive.exe, Play > "Direct connect" joins such servers too.
+
+Something went wrong? Tell them your version (top of the HMM-Revive window) and send launcher-settings.log plus the newest
+instance\hmmrevive-client-*.log (players) or instance\hmmrevive-server-9696.log and instance\server_unity_9696.log (host)
+to whoever gave you this kit.

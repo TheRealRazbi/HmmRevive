@@ -27,6 +27,13 @@ namespace HmmRevive
         /// <summary>Client: skin to wear (--hmmrevive-skin=NUMBER|NAME|random), sent with the login like the car. null = default skin.</summary>
         public static string Skin { get; private set; }
 
+        /// <summary>Client: team to join (--hmmrevive-team=red|blue), sent with the login like the car. null = the server's choice.</summary>
+        public static string Team { get; private set; }
+
+        /// <summary>Server: seconds to wait after the match ends before quitting (--hmmrevive-end-quit=SECONDS, 0 = stay up),
+        /// so players see the results and the host's launcher can start the next match.</summary>
+        public static float EndQuitDelay { get; private set; } = 30f;
+
         /// <summary>Server: bot cars per team in slot order (--hmmrevive-bot-cars-red=6,wildfire,random, same for -blue).
         /// null = the game's slot defaults.</summary>
         public static string[] RedBotCars { get; private set; }
@@ -131,6 +138,11 @@ namespace HmmRevive
             string skin = Array.Find(args, a => a.StartsWith("--hmmrevive-skin=", StringComparison.OrdinalIgnoreCase));
             if (skin != null) Skin = skin.Substring("--hmmrevive-skin=".Length).Trim('"', '\'', ' ').Replace("#", "");
             if (Skin == "" || Skin == "0" || "default".Equals(Skin, StringComparison.OrdinalIgnoreCase)) Skin = null;
+            string team = Array.Find(args, a => a.StartsWith("--hmmrevive-team=", StringComparison.OrdinalIgnoreCase));
+            if (team != null) Team = team.Substring("--hmmrevive-team=".Length).Trim('"', '\'', ' ').ToLowerInvariant();
+            if (Team != "red" && Team != "blue") Team = null;
+            string endQuit = Array.Find(args, a => a.StartsWith("--hmmrevive-end-quit=", StringComparison.OrdinalIgnoreCase));
+            if (endQuit != null) EndQuitDelay = float.Parse(endQuit.Substring("--hmmrevive-end-quit=".Length), System.Globalization.CultureInfo.InvariantCulture);
             RedBotCars = ParseList(args, "--hmmrevive-bot-cars-red=");
             BluBotCars = ParseList(args, "--hmmrevive-bot-cars-blue=");
             Chaos = Array.Exists(args, a => a.Equals("--hmmrevive-chaos", StringComparison.OrdinalIgnoreCase));
@@ -165,7 +177,7 @@ namespace HmmRevive
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
             InstallTestCryptoKeys();
             HideOwnWindows();
-            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairPercentPerSecond}% Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
+            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairPercentPerSecond}% Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
         }
     }
 

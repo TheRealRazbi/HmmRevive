@@ -14,6 +14,7 @@ param(
     [switch]$Graphics, # run with a GPU device (no -nographics) if headless mode breaks something
     [switch]$Chaos,    # test mode: every car switches to a random car on each death and each round
     [string]$Repair = "", # out-of-combat repair: "off", or "DELAY,PERCENT" (default 5,7 = 7% max HP/s after 5 s unhit)
+    [int]$EndQuit = -1, # seconds the server stays up after the match ends (mod default 30; 0 = forever)
     [string]$ChaosCars = "", # -Chaos limited to these car ids, e.g. "8,7" swaps Windrider <-> Full Metal Judge
     [string]$Instance = "instance" # game instance folder in the repo (e.g. instance-dev built with HMM_INSTANCE=instance-dev)
 )
@@ -24,6 +25,7 @@ $a = @("-batchmode")
 if (-not $Graphics) { $a += "-nographics" }
 if ($Score -gt 0) { $a += "--hmmrevive-score=$Score" }
 if ($Chaos) { $a += "--hmmrevive-chaos" }
+if ($EndQuit -ge 0) { $a += "--hmmrevive-end-quit=$EndQuit" }
 if ($Repair) { $a += "--hmmrevive-repair=$($Repair -replace '\s','')" }
 if ($ChaosCars) { $a += "--hmmrevive-chaos-cars=$($ChaosCars -replace '\s','')" }
 if ($RedBotCars) { $a += "--hmmrevive-bot-cars-red=$($RedBotCars -replace '\s','')" }

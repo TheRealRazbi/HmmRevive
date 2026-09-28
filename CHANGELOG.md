@@ -2,6 +2,24 @@
 
 Newest first. The version is shown on the first line of every kit window (setup, play, host).
 
+## 1.2 (preview, 2026-09-28)
+
+- **New launcher: `HMM-Revive.exe`.** A window with everything in one place instead of the .bat menus, in English
+  or Brazilian Portuguese (picked from your system language; switch at the top right):
+  - **Play:** lists lobbies hosted on your Tailscale or ZeroTier network (or home network); join with a click or by
+    typing the host's address.
+  - **Host:** open a lobby. You pick the arena, points to win and the bots (how many per team, how hard, and each
+    bot's car); players pick their team, car and skin and click Ready. The match starts when everyone is ready
+    (or when you click Start), and every player's game opens by itself.
+  - **Rematch:** after a match everyone is back in the lobby; click Ready again for the next one.
+  - **Settings:** your name, car, skin (remembered per car) and screen resolution. First-time setup and updating
+    your game copy are one click, and "Set up firewall" allows the game and lobby ports for hosting.
+- **Hosts on Tailscale:** the lobby uses port 9697 (TCP and UDP) next to the game's UDP 9696. If your Tailscale
+  grants only allow `udp:9696` for shared users, add `tcp:9697` and `udp:9697` (see README.txt).
+- **Match servers now stop by themselves** 30 seconds after the match ends (they used to run until closed), and
+  players' games close when that happens.
+- host.bat and play.bat still work as before.
+
 ## 1.1 (2026-09-27)
 
 - **Skins:** pick a skin when you join (play.bat lists your car's skins and remembers your pick per car; `0` =

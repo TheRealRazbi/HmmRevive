@@ -18,3 +18,5 @@ obj/
 notes/_*.txt
 
 launcher/settings.json
+launcher-settings.json
+launcher-settings.log
