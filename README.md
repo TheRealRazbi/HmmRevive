@@ -10,7 +10,8 @@ HMM Revive brings it back for free, private matches among friends:
 - **clients connect directly** to that server (the game's built-in developer direct-connect mode), for example over
   [Tailscale](https://tailscale.com).
 
-Extras: pick your car and skin at launch, switch either mid-match (`/car` and `/skin` in chat), bot count,
+Extras: a launcher window (English and Portuguese) to host a lobby, find and join lobbies on your network, pick your
+team, car and skin, and rematch; pick your car and skin at launch, switch either mid-match (`/car` and `/skin` in chat), bot count,
 difficulty and cars per team, out-of-combat repair.
 
 > Unofficial fan project, not affiliated with or endorsed by Hoplon. **No Hoplon code or game files** are in this
@@ -19,35 +20,39 @@ difficulty and cars per team, out-of-combat repair.
 
 ## Play
 
-You need Windows and Heavy Metal Machines in your Steam library (build `Release.15.00.250`).
+You need Windows and Heavy Metal Machines (build `Release.15.00.250`): from your Steam library, or a copy of the game
+folder anywhere on your PC.
 
 1. Download `HMM-Revive-friend-kit-<version>.zip` from [Releases](../../releases).
 2. Unzip it to a folder whose path has **no accented or special letters**, e.g. `C:\HMM-Revive`
    (the game crashes at start otherwise). The same drive as the game uses no extra disk space.
-3. Run `setup.bat` once. It finds the game and builds a patched copy in `.\instance`.
-4. One person hosts with `host.bat`; everyone else joins with `play.bat` and the host's address.
+3. Open `HMM-Revive.exe`. The first time it offers to set up: it finds the game and builds a patched copy in
+   `.\instance`.
+4. One person clicks **Host** and opens a lobby; the others see it under **Play** (or type the host's address) and
+   join. Everyone picks team, car and skin and clicks Ready, and the match starts. After it, you're all back in the
+   lobby for a rematch.
+   Players reach the host over [Tailscale](https://tailscale.com) or [ZeroTier](https://www.zerotier.com) (or the same
+   home network). `host.bat` and `play.bat` still work too.
 
 The step-by-step guide, including hosting over Tailscale, is in the kit and here:
 [README.txt](tools/friend-kit/README.txt) (English), [LEIA-ME.txt](tools/friend-kit/LEIA-ME.txt) (Português).
-The version (e.g. `HMM Revive 1.0`) is the first line of every kit window; mention it when you report a problem.
+The version (e.g. `HMM Revive 1.2`) is at the top of the launcher window; mention it when you report a problem.
 What changed in each version: [CHANGELOG.md](CHANGELOG.md) (also in the kit as `CHANGELOG.txt`).
 In a match, type `/cars` in chat to list the cars and `/car <name>` to switch, or `/skins` and `/skin <number>` for
 your skin (the change happens while you're dead or between rounds).
 
-**Security:** the match server has no real authentication. Anyone who can reach its UDP port (9696) can take a free
-player slot while it runs. Share it over Tailscale (the kit README shows how to limit shared users to that one port),
-set the number of human players exactly, and stop the server after playing.
+**Security:** the match server and the lobby have no real authentication. Anyone who can reach their ports (UDP 9696
+for the game, TCP/UDP 9697 for the lobby) can join while they run. Share them over Tailscale or ZeroTier (the kit
+README shows how to limit Tailscale shared users to those ports), and close the lobby after playing.
 
 ## Known limits
 
-- No main menu or rematch: "Exit game" closes the game, and the host starts a new server for each match.
+- No in-game main menu: the launcher replaces it (lobby, rematch). "Exit game" closes the game.
 - The in-match shop is gone (Hoplon removed it from the game); cars keep their base stats.
 - If your connection times out, the game can drop you into its old main menu, which says you're banned for an
   inappropriate name. Nobody is banned (there are no official servers anymore): close the game and join again.
 - Out-of-combat repair (7% max HP per second after 5 s without damage) uses our own values, not Hoplon's, and may
   still be tuned.
-
-Planned: a game browser, so players can find running matches without passing addresses around.
 
 ## Build from source
 
@@ -60,6 +65,8 @@ tools/build.sh                     # build mod + patcher, create/refresh the pat
 tools/test_match.sh 1 150          # smoke test: headless server + 1 hidden, muted client, prints logs
 tools/make_friend_kit.sh           # build/HMM-Revive-friend-kit-<version>.zip
 ```
+`build/launcher/HMM-Revive.exe` is the launcher (source in `tools/Launcher`, page in `tools/Launcher/web`); run from
+the repo it uses `./instance`.
 
 Run a match from the repo:
 ```powershell
@@ -78,6 +85,7 @@ tools/run_client.ps1 -Name Player -Ip 100.x.y.z -Car stingray      # visible gam
 | path | what |
 |---|---|
 | `mod/HmmRevive/` | the mod: server bootstrap, hooks, car/skin choice and swap, repair, watchdog logs |
+| `tools/Launcher/` | `HMM-Revive.exe`: local web launcher (host a lobby, find and join, rematch) |
 | `tools/Patcher/` | Mono.Cecil patcher: hardlinked copy of the game + IL hooks into `Assembly-CSharp-firstpass.dll` |
 | `tools/friend-kit/` | scripts and READMEs of the kit zip |
 | `launcher/` | host/join menus for running from the repo |

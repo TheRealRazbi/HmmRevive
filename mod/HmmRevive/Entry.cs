@@ -27,6 +27,13 @@ namespace HmmRevive
         /// <summary>Client: skin to wear (--hmmrevive-skin=NUMBER|NAME|random), sent with the login like the car. null = default skin.</summary>
         public static string Skin { get; private set; }
 
+        /// <summary>Client: team to join (--hmmrevive-team=red|blue), sent with the login like the car. null = the server's choice.</summary>
+        public static string Team { get; private set; }
+
+        /// <summary>Server: seconds to wait after the match ends before quitting (--hmmrevive-end-quit=SECONDS, 0 = stay up),
+        /// so players see the results and the host's launcher can start the next match.</summary>
+        public static float EndQuitDelay { get; private set; } = 30f;
+
         /// <summary>Server: bot cars per team in slot order (--hmmrevive-bot-cars-red=6,wildfire,random, same for -blue).
         /// null = the game's slot defaults.</summary>
         public static string[] RedBotCars { get; private set; }
@@ -34,6 +41,9 @@ namespace HmmRevive
 
         /// <summary>Server test mode (--hmmrevive-chaos): every car switches to a random one on each death and each round.</summary>
         public static bool Chaos { get; private set; }
+
+        /// <summary>Test: log everything loaded in the match that can heal (--hmmrevive-scan-heal, HealScan.cs).</summary>
+        public static bool ScanHeal { get; private set; }
 
         /// <summary>Chaos only picks from these car ids (--hmmrevive-chaos-cars=8,7), e.g. to repeat one swap pair. null = any car.</summary>
         public static int[] ChaosCars { get; private set; }
@@ -43,10 +53,13 @@ namespace HmmRevive
         public static HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty RedBotDifficulty { get; private set; }
         public static HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty BluBotDifficulty { get; private set; }
 
-        /// <summary>Server: out-of-combat repair (--hmmrevive-repair=DELAY,PERCENT or =off). A car that took no damage for
-        /// RepairDelay seconds repairs RepairPercentPerSecond % of its max HP per second. RepairDelay &lt; 0 = off.</summary>
+        /// <summary>Server: out-of-combat repair (--hmmrevive-repair=DELAY,RATE or =off; RATE is HP/s, e.g. "100hp", or %
+        /// of max HP/s, e.g. "21" / "21%"). A car that took no damage for RepairDelay seconds repairs RATE until full.
+        /// Default 100 HP/s flat, the same as the arenas' own repair areas (Repair_Hazard). RepairDelay &lt; 0 = off.</summary>
         public static float RepairDelay { get; private set; } = 5f;
-        public static float RepairPercentPerSecond { get; private set; } = 7f;
+        public static float RepairPercentPerSecond { get; private set; } // 0 = flat RepairHpPerSecond
+        public static float RepairHpPerSecond { get; private set; } = 100f;
+        public static string RepairRate => RepairPercentPerSecond > 0f ? RepairPercentPerSecond + "% max HP/s" : RepairHpPerSecond + " HP/s";
 
         /// <summary>Client test aid (--hmmrevive-shots=N): N off-screen pictures of the match, see TestShots.</summary>
         public static int Shots { get; private set; }
@@ -131,9 +144,15 @@ namespace HmmRevive
             string skin = Array.Find(args, a => a.StartsWith("--hmmrevive-skin=", StringComparison.OrdinalIgnoreCase));
             if (skin != null) Skin = skin.Substring("--hmmrevive-skin=".Length).Trim('"', '\'', ' ').Replace("#", "");
             if (Skin == "" || Skin == "0" || "default".Equals(Skin, StringComparison.OrdinalIgnoreCase)) Skin = null;
+            string team = Array.Find(args, a => a.StartsWith("--hmmrevive-team=", StringComparison.OrdinalIgnoreCase));
+            if (team != null) Team = team.Substring("--hmmrevive-team=".Length).Trim('"', '\'', ' ').ToLowerInvariant();
+            if (Team != "red" && Team != "blue") Team = null;
+            string endQuit = Array.Find(args, a => a.StartsWith("--hmmrevive-end-quit=", StringComparison.OrdinalIgnoreCase));
+            if (endQuit != null) EndQuitDelay = float.Parse(endQuit.Substring("--hmmrevive-end-quit=".Length), System.Globalization.CultureInfo.InvariantCulture);
             RedBotCars = ParseList(args, "--hmmrevive-bot-cars-red=");
             BluBotCars = ParseList(args, "--hmmrevive-bot-cars-blue=");
             Chaos = Array.Exists(args, a => a.Equals("--hmmrevive-chaos", StringComparison.OrdinalIgnoreCase));
+            ScanHeal = Array.Exists(args, a => a.Equals("--hmmrevive-scan-heal", StringComparison.OrdinalIgnoreCase));
             string chaosCars = Array.Find(args, a => a.StartsWith("--hmmrevive-chaos-cars=", StringComparison.OrdinalIgnoreCase));
             if (chaosCars != null)
             {
@@ -152,7 +171,14 @@ namespace HmmRevive
                 else
                 {
                     RepairDelay = float.Parse(v[0], System.Globalization.CultureInfo.InvariantCulture);
-                    if (v.Length > 1) RepairPercentPerSecond = float.Parse(v[1], System.Globalization.CultureInfo.InvariantCulture);
+                    if (v.Length > 1)
+                    {
+                        string rate = v[1].Trim().ToLowerInvariant();
+                        bool hp = rate.EndsWith("hp");
+                        float n = float.Parse(rate.TrimEnd('%', 'h', 'p'), System.Globalization.CultureInfo.InvariantCulture);
+                        if (hp) { RepairHpPerSecond = n; RepairPercentPerSecond = 0f; }
+                        else RepairPercentPerSecond = n;
+                    }
                 }
             }
             RedBotDifficulty = ParseDifficulty(args, "--hmmrevive-difficulty-red=");
@@ -165,7 +191,7 @@ namespace HmmRevive
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
             InstallTestCryptoKeys();
             HideOwnWindows();
-            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairPercentPerSecond}% Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
+            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairRate} Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
         }
     }
 

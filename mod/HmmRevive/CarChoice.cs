@@ -25,15 +25,19 @@ namespace HmmRevive
         private const char Separator = '#';
         private static readonly Dictionary<string, string> ChoiceByName = new Dictionary<string, string>();
         private static readonly Dictionary<string, string> SkinByName = new Dictionary<string, string>();
+        private static readonly Dictionary<string, bool> RedByName = new Dictionary<string, bool>();
         private static readonly System.Random Rng = new System.Random();
         private static bool _listed;
 
         // Client, AuthenticationSerializer.SerializeAuthenticationRequest: transforms the login name that is written.
-        // "name", "name#car" or "name#car#skin" (car may be empty).
+        // "name", "name#car", "name#car#skin" or "name#car#skin#team" (car and skin may be empty).
         public static string LoginName(string name)
         {
-            if (Entry.Car == null && Entry.Skin == null) return name;
-            return name + Separator + Entry.Car + (Entry.Skin == null ? "" : Separator + Entry.Skin);
+            if (Entry.Car == null && Entry.Skin == null && Entry.Team == null) return name;
+            string login = name + Separator + Entry.Car;
+            if (Entry.Skin != null || Entry.Team != null) login += Separator + Entry.Skin;
+            if (Entry.Team != null) login += Separator + Entry.Team;
+            return login;
         }
 
         // Server, start of AuthenticationManager.FakeAuthentication: username = TakeFromLogin(username).
@@ -45,8 +49,19 @@ namespace HmmRevive
             string[] parts = login.Substring(i + 1).Split(Separator);
             if (parts[0].Length > 0) ChoiceByName[name] = parts[0];
             if (parts.Length > 1 && parts[1].Length > 0) SkinByName[name] = parts[1];
-            Log.Info($"player {name} wants car '{parts[0]}' skin '{(parts.Length > 1 ? parts[1] : "")}'");
+            if (parts.Length > 2 && (parts[2] == "red" || parts[2] == "blue")) RedByName[name] = parts[2] == "red";
+            Log.Info($"player {name} wants car '{parts[0]}' skin '{(parts.Length > 1 ? parts[1] : "")}' team '{(parts.Length > 2 ? parts[2] : "")}'");
             return name;
+        }
+
+        // Server, start of AuthenticationManager.FakeRequest(username, ...): a player who asked for a team (the launcher's
+        // lobby) gets it. FakeRequest puts the player on Red when _nextPlayerOnRedTeam is set (and the config doesn't force
+        // everyone on Blue), then flips that flag; without a wish the game keeps alternating.
+        public static void ChooseTeam(object authManager, string username)
+        {
+            bool red;
+            if (username == null || !RedByName.TryGetValue(username, out red)) return;
+            authManager.GetType().GetField("_nextPlayerOnRedTeam", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(authManager, red);
         }
 
         /// <summary>Skin the player asked for at login (a number, a name or "random"), or null.</summary>
@@ -70,6 +85,7 @@ namespace HmmRevive
                 DumpSkins(characters);
             }
             if (player.IsBot) return BotCar(player, characters, fallback);
+            Log.Info($"player {player.Name} is {player.Team} #{player.TeamSlot + 1}");
             string want;
             if (!ChoiceByName.TryGetValue(player.Name, out want)) return fallback;
             int id = Resolve(want, characters);

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HMM Revive</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="icon.svg" alt=""><span>HMM <b>Revive</b></span><small id="version"></small></div>
+  <nav id="nav">
+    <button data-view="play" data-i18n="nav_play"></button>
+    <button data-view="host" data-i18n="nav_host"></button>
+    <button data-view="lobby" id="nav-lobby" data-i18n="nav_lobby" hidden></button>
+    <button data-view="settings" data-i18n="nav_settings"></button>
+    <button data-view="help" data-i18n="nav_help"></button>
+  </nav>
+  <select id="lang" class="lang" aria-label="Language / Idioma">
+    <option value="en">EN</option>
+    <option value="pt">PT-BR</option>
+  </select>
+  <button class="me" id="me-chip" data-i18n-title="me_title"></button>
+</header>
+
+<div id="banners"></div>
+
+<main>
+  <!-- PLAY -->
+  <section class="view" id="view-play">
+    <div class="head">
+      <h1 data-i18n="matches"></h1>
+      <button class="ghost" id="refresh" data-i18n="refresh"></button>
+    </div>
+    <p class="hint" data-i18n="play_hint"></p>
+    <div id="lobbies" class="cards"></div>
+    <div class="panel">
+      <h2 data-i18n="join_by_address"></h2>
+      <p class="hint" data-i18n="join_hint"></p>
+      <form class="row" id="join-form">
+        <input id="join-address" placeholder="100.x.y.z" autocomplete="off" spellcheck="false">
+        <button class="primary" type="submit" data-i18n="join_lobby"></button>
+      </form>
+      <div id="recent" class="chips"></div>
+      <details class="old">
+        <summary data-i18n="direct_summary"></summary>
+        <p class="hint" data-i18n="direct_hint"></p>
+        <form class="row" id="quick-form">
+          <input id="quick-address" data-i18n-ph="address_ph" autocomplete="off" spellcheck="false">
+          <button type="submit" data-i18n="connect"></button>
+        </form>
+      </details>
+    </div>
+  </section>
+
+  <!-- HOST -->
+  <section class="view" id="view-host">
+    <div class="head"><h1 data-i18n="host_title"></h1></div>
+    <div class="panel">
+      <p data-i18n="host_intro"></p>
+      <p class="hint" data-i18n="host_who"></p>
+      <div id="host-checks"></div>
+      <button class="primary big" id="open-lobby"></button>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section class="view" id="view-lobby">
+    <div class="head">
+      <div>
+        <h1 id="lobby-title"></h1>
+        <div class="sub" id="lobby-sub"></div>
+      </div>
+      <button class="ghost danger" id="leave" data-i18n="leave"></button>
+    </div>
+    <div class="status" id="lobby-status"></div>
+    <div class="teams">
+      <div class="team blue"><div class="team-head"><h2 data-i18n="team_blue"></h2><span id="switch-blue"></span></div><div class="slots" id="slots-blue"></div></div>
+      <div class="team red"><div class="team-head"><h2 data-i18n="team_red"></h2><span id="switch-red"></span></div><div class="slots" id="slots-red"></div></div>
+    </div>
+    <div class="lobby-bottom">
+      <div class="panel mine">
+        <h2 data-i18n="you_title"></h2>
+        <p class="hint" id="not-playing" data-i18n="not_playing_hint" hidden></p>
+        <label class="player-only"><span data-i18n="car"></span> <select id="lobby-car"></select></label>
+        <label class="player-only"><span data-i18n="skin"></span> <select id="lobby-skin"></select></label>
+        <button class="ready big" id="ready"></button>
+        <button class="ghost" id="relaunch" data-i18n="start_again" hidden></button>
+      </div>
+      <div class="panel hostbox" id="hostbox" hidden>
+        <h2 data-i18n="match_settings"></h2>
+        <label><span data-i18n="arena"></span> <select id="h-arena"></select></label>
+        <label><span data-i18n="points_to_win"></span> <select id="h-score"></select></label>
+        <div class="bots">
+          <div><span class="blue-t" data-i18n="blue_bots"></span> <span class="stepper"><button data-bots="blue:-1">−</button><b id="h-blue-bots"></b><button data-bots="blue:1">+</button></span>
+            <select id="h-blue-diff"></select></div>
+          <div><span class="red-t" data-i18n="red_bots"></span> <span class="stepper"><button data-bots="red:-1">−</button><b id="h-red-bots"></b><button data-bots="red:1">+</button></span>
+            <select id="h-red-diff"></select></div>
+        </div>
+        <label class="check"><input type="checkbox" id="h-auto"> <span data-i18n="auto_start"></span></label>
+        <label class="check"><input type="checkbox" id="h-plays"> <span data-i18n="host_plays"></span></label>
+        <div class="row">
+          <button class="primary" id="start" data-i18n="start_now"></button>
+          <button class="danger" id="stop" data-i18n="stop_match" hidden></button>
+        </div>
+        <div class="share" id="share"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings">
+    <div class="head"><h1 data-i18n="settings_title"></h1></div>
+    <div class="grid2">
+      <div class="panel">
+        <h2 data-i18n="player"></h2>
+        <label><span data-i18n="name"></span> <input id="s-name" maxlength="16" spellcheck="false" autocomplete="off"></label>
+        <p class="hint" data-i18n="name_hint"></p>
+        <label><span data-i18n="car"></span> <select id="s-car"></select></label>
+        <label><span data-i18n="skin"></span> <select id="s-skin"></select></label>
+        <p class="hint" data-i18n="skin_hint"></p>
+        <label><span data-i18n="language"></span> <select id="s-lang">
+          <option value="en">English</option>
+          <option value="pt">Português (Brasil)</option>
+        </select></label>
+      </div>
+      <div class="panel">
+        <h2 data-i18n="display"></h2>
+        <label><span data-i18n="resolution"></span> <select id="s-res"></select></label>
+        <label class="check"><input type="checkbox" id="s-full"> <span data-i18n="fullscreen"></span></label>
+        <h2 data-i18n="game_copy"></h2>
+        <div id="s-game"></div>
+        <h2 data-i18n="hosting"></h2>
+        <div id="s-firewall"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HELP -->
+  <section class="view" id="view-help">
+    <div class="head"><h1 data-i18n="help_title"></h1></div>
+    <div class="faq">
+      <details open><summary data-i18n="faq_who_q"></summary><p data-i18n="faq_who_a"></p></details>
+      <details><summary data-i18n="faq_safe_q"></summary><p data-i18n="faq_safe_a"></p></details>
+      <details><summary data-i18n="faq_fw_q"></summary><p data-i18n="faq_fw_a1"></p><p data-i18n="faq_fw_a2"></p></details>
+      <details><summary data-i18n="faq_server_q"></summary><p data-i18n="faq_server_a"></p></details>
+      <details><summary data-i18n="faq_nogame_q"></summary><p data-i18n="faq_nogame_a"></p></details>
+      <details><summary data-i18n="faq_version_q"></summary><p data-i18n="faq_version_a"></p></details>
+      <details><summary data-i18n="faq_old_q"></summary><p data-i18n="faq_old_a"></p></details>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

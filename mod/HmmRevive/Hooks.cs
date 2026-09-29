@@ -80,6 +80,7 @@ namespace HmmRevive
             CarSwap.Attach((HeavyMetalMachines.HMMHub)hub);
             OutOfCombatRepair.Attach((HeavyMetalMachines.HMMHub)hub);
             TestShots.Attach((HeavyMetalMachines.HMMHub)hub);
+            MatchEnd.Attach((HeavyMetalMachines.HMMHub)hub);
         }
 
         // Start of Pocketverse.GameState.EnableState: unbuffered state trace for both roles.
@@ -88,6 +89,7 @@ namespace HmmRevive
             Log.Info("STATE +" + ((UnityEngine.Object)state).name + " (" + state.GetType().Name + ")");
             ApplyScoreTarget();
             if (state is HeavyMetalMachines.Frontend.LoadingState) CarSwap.OnLoadingStarted();
+            MatchEnd.OnState(state);
         }
 
         // Same override the tutorial uses (StartMatchTutorialBehaviour): shorter matches for testing the match end.

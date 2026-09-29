@@ -14,6 +14,7 @@ param(
     [int]$Score = 0,   # must match the server's -Score
     [string]$Car = "", # car name or number, e.g. -Car stingray (see "cars:" in the server log); empty = default
     [string]$Skin = "", # skin number (launcher/skins.txt, 0 = default), name or "random"; empty = default
+    [string]$Team = "", # red or blue: ask the server for this team (the server honours it); empty = the server's choice
     [string]$Instance = "instance", # game instance folder in the repo (e.g. instance-dev built with HMM_INSTANCE=instance-dev)
     [int]$Shots = 0,        # tests: N off-screen pictures of the match (hmmrevive-shot-<pid>-<n>.png next to HMM.exe)
     [string]$AutoChat = ""  # tests: chat lines sent 3 s into the match, ';'-separated, e.g. "/cars;/car wildfire"
@@ -26,6 +27,7 @@ if ($Background) { $a += @("-batchmode", "--hmmrevive-mute") }
 if ($Score -gt 0) { $a += "--hmmrevive-score=$Score" }
 if ($Car) { $a += "--hmmrevive-car=$($Car -replace '\s','')" }
 if ($Skin) { $a += "--hmmrevive-skin=$($Skin -replace '\s','')" }
+if ($Team) { $a += "--hmmrevive-team=$Team" }
 if ($Shots -gt 0) { $a += "--hmmrevive-shots=$Shots" }
 if ($AutoChat) { $a += "`"--hmmrevive-autochat=$AutoChat`"" }
 if ($Width -gt 0 -and $Height -gt 0) { $a += @("-screen-width", $Width, "-screen-height", $Height) }

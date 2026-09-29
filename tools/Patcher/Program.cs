@@ -121,6 +121,13 @@ static class Program
             il.Create(OpCodes.Starg_S, fakeAuth.Parameters[0]),
         });
 
+        Prologue(Target("Pocketverse.AuthenticationManager", "FakeRequest"), il => new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Ldarg_1),
+            il.Create(OpCodes.Call, Hook("HmmRevive.CarChoice", "ChooseTeam")),
+        });
+
         var getChar = Target("HeavyMetalMachines.CharacterSelection.Server.Swordfish.SkipSwordfishServerExecuteCharacterSelection", "GetCharacterId");
         var getInt = getChar.Body.Instructions.Single(i => i.Operand is MethodReference mr && mr.Name == "GetIntValue");
         var gil = getChar.Body.GetILProcessor();
