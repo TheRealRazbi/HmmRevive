@@ -20,7 +20,8 @@ quantidade, dificuldade e carros dos bots por time, reparo fora de combate.
 
 ## Como jogar
 
-Você precisa de Windows e do Heavy Metal Machines na sua biblioteca da Steam (build `Release.15.00.250`).
+Você precisa de Windows e do Heavy Metal Machines (build `Release.15.00.250`): da sua biblioteca da Steam, ou uma cópia
+da pasta do jogo em qualquer lugar do PC.
 
 1. Baixe o `HMM-Revive-friend-kit-<versão>.zip` em [Releases](../../releases).
 2. Descompacte numa pasta cujo caminho **não tenha acentos nem letras especiais**, por exemplo `C:\HMM-Revive`

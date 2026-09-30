@@ -34,7 +34,8 @@ if ($steam) {
 }
 $game = $candidates | Where-Object { Test-Path (Join-Path $_ "HMM.exe") } | Select-Object -First 1
 if (-not $game) {
-    $game = Read-Host "Heavy Metal Machines folder (Steam > right-click the game > Manage > Browse local files)"
+    $game = (Read-Host "Heavy Metal Machines folder, the one with HMM.exe (Steam: right-click the game > Manage > Browse local files)").Trim().Trim('"')
+    if ($game -match '(?i)\\HMM\.exe$') { $game = Split-Path $game }
 }
 if (-not (Test-Path (Join-Path $game "HMM.exe"))) { throw "HMM.exe not found in '$game'" }
 Write-Host "Game found: $game"

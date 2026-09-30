@@ -103,7 +103,8 @@ namespace HmmRevive.Launcher
             string baseUrl = $"http://{host}:{port}";
             try
             {
-                var d = Js.Read(Post(baseUrl + "/lobby/join", new Dictionary<string, object> { ["name"] = Settings.Data.Str("name"), ["version"] = Program.Version }));
+                var d = Js.Read(Post(baseUrl + "/lobby/join", new Dictionary<string, object>
+                    { ["name"] = Settings.Data.Str("name"), ["version"] = Program.Version, ["builds"] = Builds.ReadyBuilds().ToArray() }));
                 var s = new Session($"{host}:{port}", host, d.Str("token"), d.Str("id"));
                 s.SendChoices(false);
                 return s;
@@ -118,21 +119,38 @@ namespace HmmRevive.Launcher
         /// <summary>The host's own seat: joins the lobby object directly.</summary>
         public static Session JoinOwn(Lobby lobby, out string error)
         {
-            var m = lobby.Join(Settings.Data.Str("name"), Program.Version, true, out error);
+            var m = lobby.Join(Settings.Data.Str("name"), Program.Version, new[] { lobby.Build }, true, out error);
             if (m == null) return null;
             var s = new Session("127.0.0.1:" + lobby.LobbyPort, "127.0.0.1", m.Token, m.Id);
             s.SendChoices(false);
             return s;
         }
 
-        /// <summary>Sends our car and skin (from settings), and optionally a team or ready flag.</summary>
-        public string SendChoices(bool? ready, string team = null)
+        /// <summary>Our entry in the last lobby snapshot, or null.</summary>
+        private Dictionary<string, object> Me(Dictionary<string, object> d) =>
+            d?.List("members").OfType<Dictionary<string, object>>().FirstOrDefault(m => m.Str("id") == d.Str("me"));
+
+        /// <summary>After a draft our car is one of the team's picks, set in the lobby, not the one in our settings.</summary>
+        private static bool Drafted(Dictionary<string, object> d) => d?.Obj("draft") != null;
+
+        /// <summary>Sends our car and skin (from settings, or <paramref name="car"/>), and optionally a team or ready flag.</summary>
+        public string SendChoices(bool? ready, string team = null, string car = null)
         {
-            string car = Settings.Data.Str("car");
-            var body = new Dictionary<string, object> { ["token"] = _token, ["car"] = car, ["skin"] = Settings.SkinFor(car) };
+            var lobby = Lobby;
+            var body = new Dictionary<string, object> { ["token"] = _token };
+            if (car == null && Drafted(lobby)) car = Me(lobby)?.Str("car"); // keep the drafted car; skins still follow it
+            else body["car"] = car = car ?? Settings.Data.Str("car");
+            body["skin"] = Settings.SkinFor(car ?? "");
             if (ready.HasValue) body["ready"] = ready.Value;
             if (team != null) body["team"] = team;
             try { Post($"http://{Address}/lobby/update", body); return null; }
+            catch (Exception e) { return e.Message; }
+        }
+
+        /// <summary>Draft: select or unselect a car for our team's turn ("select"), or lock the turn in ("lock").</summary>
+        public string DraftAct(string action, string car)
+        {
+            try { Post($"http://{Address}/lobby/draft", new Dictionary<string, object> { ["token"] = _token, ["action"] = action, ["car"] = car ?? "" }); return null; }
             catch (Exception e) { return e.Message; }
         }
 
@@ -185,7 +203,7 @@ namespace HmmRevive.Launcher
         // The host's server is up and we're in this match: start our game once per match.
         private void React(Dictionary<string, object> d)
         {
-            var me = d.List("members").OfType<Dictionary<string, object>>().FirstOrDefault(m => m.Str("id") == d.Str("me"));
+            var me = Me(d);
             if (me == null) return;
             int match = d.Int("match");
             string phase = d.Str("phase");
@@ -201,7 +219,8 @@ namespace HmmRevive.Launcher
             {
                 _launchedMatch = match;
                 int score = d.Int("score");
-                try { Game.StartClient(GameIp, d.Int("gamePort", 9696), me.Str("team"), score == 3 ? 0 : score); }
+                string car = Drafted(d) ? me.Str("car") : null; // null: the car in our settings
+                try { Game.StartClient(d.Str("build") ?? Builds.Steam, GameIp, d.Int("gamePort", 9696), me.Str("team"), score == 3 ? 0 : score, car); }
                 catch (Exception e) { Error = "Couldn't start the game: " + e.Message; }
             }
         }

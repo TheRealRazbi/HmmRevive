@@ -8,6 +8,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace HmmRevive.Launcher
 {
@@ -35,7 +36,7 @@ namespace HmmRevive.Launcher
 
         public static string GameExe => Path.Combine(Instance, "HMM.exe");
         public static string LauncherExe => Process.GetCurrentProcess().MainModule.FileName;
-        public static string Patcher => First(Path.Combine(Root, "Patcher.exe"));
+        public static string Patcher => First(Path.Combine(Root, "Patcher.exe"), Path.Combine(Root, "build", "patcher", "Patcher.exe"));
         public static string ModDir => Directory.Exists(Path.Combine(Root, "mod")) && File.Exists(Path.Combine(Root, "mod", "HmmRevive.dll"))
             ? Path.Combine(Root, "mod") : Path.Combine(Root, "build", "mod");
         public static string SkinsFile => First(Path.Combine(Root, "skins.txt"), Path.Combine(Root, "launcher", "skins.txt"));
@@ -222,31 +223,33 @@ namespace HmmRevive.Launcher
 
         private static string Quote(string a) => a.IndexOf(' ') >= 0 ? "\"" + a + "\"" : a;
 
-        private static Process Start(List<string> args, bool hidden)
+        private static Process Start(string build, List<string> args, bool hidden)
         {
-            var psi = new ProcessStartInfo(Paths.GameExe, string.Join(" ", args.Select(Quote)))
+            var psi = new ProcessStartInfo(Builds.GameExe(build), string.Join(" ", args.Select(Quote)))
             {
-                WorkingDirectory = Paths.Instance,
+                WorkingDirectory = Builds.Instance(build),
                 UseShellExecute = false,
                 CreateNoWindow = hidden,
             };
             if (hidden) psi.WindowStyle = ProcessWindowStyle.Hidden;
             Process p = Process.Start(psi);
-            Program.Log($"started HMM.exe pid={p.Id}: {psi.Arguments}");
+            Program.Log($"started {psi.FileName} pid={p.Id}: {psi.Arguments}");
             return p;
         }
 
         public class ServerOptions
         {
             public int Port = 9696, Players = 1, Arena = 1, Score = 0, RedBots, BluBots, EndQuit = 30;
-            public string RedDifficulty = "auto", BluDifficulty = "auto", RedBotCars = "", BluBotCars = "";
+            public string Build = Builds.Steam, RedDifficulty = "auto", BluDifficulty = "auto", RedBotCars = "", BluBotCars = "";
         }
 
         /// <summary>Headless match server, the same command line as tools/run_server.ps1.</summary>
         public static Process StartServer(ServerOptions o)
         {
             StopServer();
-            File.Delete(Path.Combine(Paths.Instance, $"hmmrevive-server-{o.Port}.log"));
+            string inst = Builds.Instance(o.Build);
+            File.Delete(Path.Combine(inst, $"hmmrevive-server-{o.Port}.log"));
+            if (Builds.IsLegacy(o.Build)) return StartLegacyServer(o, inst);
             var a = new List<string> { "-batchmode", "-nographics" };
             if (o.Score > 0) a.Add("--hmmrevive-score=" + o.Score);
             a.Add("--hmmrevive-end-quit=" + o.EndQuit);
@@ -258,7 +261,23 @@ namespace HmmRevive.Launcher
                 "BeginConfig", "[Debug]", "SkipSwordfish=true", "IsDebug=true",
                 "[Game]", "PlayerCount=" + o.Players, "ArenaIndex=" + o.Arena, "RedTeamBotsCount=" + o.RedBots, "BluTeamBotsCount=" + o.BluBots,
                 "AllPlayersOnBluTeam=false", "[Server]", "Port=" + o.Port, "EndConfig" });
-            Server = Start(a, true);
+            Server = Start(o.Build, a, true);
+            try { Server.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+            return Server;
+        }
+
+        /// <summary>An old build's server (mod/HmmRevive.Legacy): players pick cars in the game's own pick screen, one arena.</summary>
+        private static Process StartLegacyServer(ServerOptions o, string inst)
+        {
+            var a = new List<string> { "-batchmode", "-nographics", "-silent-crashes", "--hmmrevive-server", "--hmmrevive-end-quit=" + o.EndQuit };
+            if (o.Score > 0) a.Add("--hmmrevive-score=" + o.Score);
+            if (o.RedDifficulty != "auto") a.Add("--hmmrevive-difficulty-red=" + o.RedDifficulty);
+            if (o.BluDifficulty != "auto") a.Add("--hmmrevive-difficulty-blue=" + o.BluDifficulty);
+            a.AddRange(new[] { "-logFile", Path.Combine(inst, $"server_unity_{o.Port}.log"),
+                "BeginConfig", "[Debug]", "SkipSwordfish=true", "IsDebug=true",
+                "[Game]", "PlayerCount=" + o.Players, "ArenaIndex=1", "RedTeamBotsCount=" + o.RedBots, "BluTeamBotsCount=" + o.BluBots,
+                "AllPlayersOnBluTeam=false", "[Server]", "Port=" + o.Port, "EndConfig" });
+            Server = Start(o.Build, a, true);
             try { Server.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
             return Server;
         }
@@ -274,12 +293,16 @@ namespace HmmRevive.Launcher
             Running(Server) && IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners().Any(e => e.Port == port);
 
         /// <summary>This player's game in direct-connect mode, like play.bat. Team is "red", "blue" or null.</summary>
-        public static Process StartClient(string ip, int port, string team, int score)
+        /// <param name="team">red, blue, or spec: watch the match as one of the game's spectators (narrators)</param>
+        /// <param name="car">car id, or null for the one in the settings</param>
+        public static Process StartClient(string build, string ip, int port, string team, int score, string car = null)
         {
             StopClient();
+            if (Builds.IsLegacy(build)) return StartLegacyClient(build, ip, port, team);
             string name = Settings.Data.Str("name");
-            string car = Settings.Data.Str("car");
-            string skin = Settings.SkinFor(car);
+            bool spectate = team == Lobby.Spectator;
+            car = spectate ? null : string.IsNullOrEmpty(car) ? Settings.Data.Str("car") : car;
+            string skin = spectate ? "0" : Settings.SkinFor(car);
             var a = new List<string>();
             if (TestBackground) a.AddRange(new[] { "-batchmode", "--hmmrevive-mute" });
             a.AddRange(new[] { "-logFile", Path.Combine(Paths.Instance, $"client_{name}.log") });
@@ -287,12 +310,33 @@ namespace HmmRevive.Launcher
             if (!string.IsNullOrEmpty(car)) a.Add("--hmmrevive-car=" + car);
             if (skin != "0") a.Add("--hmmrevive-skin=" + Regex.Replace(skin, @"[\s#""']", ""));
             if (team == "red" || team == "blue") a.Add("--hmmrevive-team=" + team);
+            if (spectate) a.Add("--hmmrevive-spectate");
             int w = Settings.Data.Int("width"), h = Settings.Data.Int("height");
             if (w > 0 && h > 0) a.AddRange(new[] { "-screen-width", w.ToString(), "-screen-height", h.ToString() });
             a.AddRange(new[] { "-screen-fullscreen", Settings.Data.Bool("fullscreen", true) ? "1" : "0" });
             a.AddRange(new[] { "BeginConfig", "[Debug]", "SkipSwordfish=true", "DirectMatch=true", "PlayerName=" + name,
                 "[Server]", "IP=" + ip, "Port=" + port, "EndConfig" });
-            Client = Start(a, TestBackground);
+            Client = Start(build, a, TestBackground);
+            return Client;
+        }
+
+        /// <summary>An old build's game: it opens its main menu and joins the server by itself (--hmmrevive-connect); the
+        /// player then picks a car in the game's own pick screen.</summary>
+        private static Process StartLegacyClient(string build, string ip, int port, string team)
+        {
+            string name = Settings.Data.Str("name");
+            var a = new List<string>();
+            if (TestBackground) a.AddRange(new[] { "-batchmode", "-nographics", "-silent-crashes", "--hmmrevive-mute" });
+            a.AddRange(new[] { "-logFile", Path.Combine(Builds.Instance(build), $"client_{name}.log"), "--hmmrevive-connect" });
+            if (team == "red" || team == "blue") a.Add("--hmmrevive-team=" + team);
+            int w = Settings.Data.Int("width"), h = Settings.Data.Int("height");
+            if (w > 0 && h > 0) a.AddRange(new[] { "-screen-width", w.ToString(), "-screen-height", h.ToString() });
+            a.AddRange(new[] { "-screen-fullscreen", Settings.Data.Bool("fullscreen", true) ? "1" : "0" });
+            a.AddRange(new[] { "BeginConfig", "[Debug]", "SkipSwordfish=true", "PlayerName=" + name });
+            if (TestBackground) a.Add("AutoTest=true"); // picks a car by itself (nobody clicks in a test)
+            a.AddRange(new[] { "[Server]", "IP=" + ip, "Port=" + port,
+                "[Game]", "SkipTutorial=true", "SkipSplashPlayer=true", "SkipTutorialSplashes=true", "EndConfig" });
+            Client = Start(build, a, TestBackground);
             return Client;
         }
 
@@ -302,12 +346,16 @@ namespace HmmRevive.Launcher
             Client = null;
         }
 
-        // --- setup (kit): patch the Steam install into .\instance ---
+        // --- setup (kit): patch the player's game folder (Steam or any copy) into .\instance ---
         public static volatile string SetupStatus = ""; // "", "running", "done", "failed: ..."
+        public static volatile string SetupBuild = Builds.Steam; // the copy being (or last) set up
         public static readonly StringBuilder SetupLog = new StringBuilder();
 
-        public static string FindSteamGame()
+        /// <summary>The game folder setup copies from: the one the player chose before, else the first Steam library that has it.</summary>
+        public static string FindGame()
         {
+            string chosen = GameDirOf(Settings.Data.Str("gameDir"), out _);
+            if (chosen != null && Builds.Detect(chosen) == Builds.Steam) return chosen;
             var candidates = new List<string>();
             try
             {
@@ -325,13 +373,82 @@ namespace HmmRevive.Launcher
                 }
             }
             catch { }
-            return candidates.FirstOrDefault(c => File.Exists(Path.Combine(c, "HMM.exe")));
+            return candidates.Select(c => GameDirOf(c, out _)).FirstOrDefault(c => c != null && Builds.Detect(c) == Builds.Steam);
         }
 
-        public static void RunSetup(string gameDir)
+        /// <summary>
+        /// The original game folder for what the player picked: HMM.exe itself, its folder, or a folder right above it
+        /// (a Steam library, or a folder holding "Heavy Metal Machines"). Null, with the reason, when it isn't one.
+        /// </summary>
+        public static string GameDirOf(string picked, out string why)
+        {
+            why = "Heavy Metal Machines not found in '" + picked + "'";
+            if (string.IsNullOrWhiteSpace(picked)) return null;
+            string p;
+            try
+            {
+                p = picked.Trim().Trim('"');
+                if (File.Exists(p)) p = Path.GetDirectoryName(p);
+                p = Path.GetFullPath(p);
+            }
+            catch { return null; }
+            string dir = new[] { p, Path.Combine(p, "Heavy Metal Machines"), Path.Combine(p, "steamapps", "common", "Heavy Metal Machines") }
+                .FirstOrDefault(d => File.Exists(Path.Combine(d, "HMM.exe")) && Directory.Exists(Path.Combine(d, "HMM_Data", "Managed")));
+            if (dir == null) return null;
+            // Patching HMM Revive's own copy (or another kit's) would patch the game twice.
+            string managed = Path.Combine(dir, "HMM_Data", "Managed");
+            if (new[] { Builds.Steam }.Concat(Builds.Legacy).Any(b => string.Equals(dir.TrimEnd('\\'), Builds.Instance(b).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                || File.Exists(Path.Combine(managed, "HmmRevive.dll")) || File.Exists(Path.Combine(managed, "HmmReviveLegacy.dll")))
+            {
+                why = "That's an HMM Revive copy of the game. Choose the original game folder.";
+                return null;
+            }
+            return dir;
+        }
+
+        private static int _browsing;
+
+        /// <summary>Windows' open-file window, asking for HMM.exe; the chosen file, or null when cancelled.</summary>
+        public static string BrowseForGame()
+        {
+            if (Interlocked.Exchange(ref _browsing, 1) == 1) throw new Exception("The window to choose the game is already open.");
+            string chosen = null;
+            Exception error = null;
+            var t = new Thread(() =>
+            {
+                try
+                {
+                    bool pt = Settings.Data.Str("lang") == "pt";
+                    string start = FindGame();
+                    // A hidden topmost owner, so the window opens in front of the launcher page instead of behind it.
+                    using (var owner = new System.Windows.Forms.Form { TopMost = true, ShowInTaskbar = false })
+                    using (var dlg = new System.Windows.Forms.OpenFileDialog
+                    {
+                        Title = pt ? "Escolha o HMM.exe na pasta do Heavy Metal Machines" : "Choose HMM.exe in your Heavy Metal Machines folder",
+                        Filter = "HMM.exe|HMM.exe",
+                        CheckFileExists = true,
+                        RestoreDirectory = true,
+                        InitialDirectory = start ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer),
+                    })
+                    {
+                        if (dlg.ShowDialog(owner) == System.Windows.Forms.DialogResult.OK) chosen = dlg.FileName;
+                    }
+                }
+                catch (Exception e) { error = e; }
+            });
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+            t.Join();
+            _browsing = 0;
+            if (error != null) throw error;
+            return chosen;
+        }
+
+        public static void RunSetup(string build, string gameDir)
         {
             if (SetupStatus == "running") return;
             SetupStatus = "running";
+            SetupBuild = build;
             lock (SetupLog) SetupLog.Clear();
             new System.Threading.Thread(() =>
             {
@@ -340,7 +457,8 @@ namespace HmmRevive.Launcher
                     if (Running(Client) || Running(Server)) throw new Exception("close the game and stop the match first");
                     if (Paths.Patcher == null) throw new Exception("Patcher.exe is missing next to HMM-Revive.exe");
                     if (gameDir == null || !File.Exists(Path.Combine(gameDir, "HMM.exe"))) throw new Exception("Heavy Metal Machines not found in '" + gameDir + "'");
-                    var psi = new ProcessStartInfo(Paths.Patcher, $"\"{gameDir}\" \"{Paths.Instance}\" \"{Paths.ModDir}\"")
+                    if (Builds.Detect(gameDir) != build) throw new Exception("That copy of the game isn't supported.");
+                    var psi = new ProcessStartInfo(Paths.Patcher, $"\"{gameDir}\" \"{Builds.Instance(build)}\" \"{Paths.ModDir}\"")
                     { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
                     using (Process p = Process.Start(psi))
                     {
@@ -362,7 +480,8 @@ namespace HmmRevive.Launcher
         }
     }
 
-    /// <summary>This PC's addresses on the networks players use (Tailscale 100.64.0.0/10, ZeroTier, LAN).</summary>
+    /// <summary>This PC's addresses on the networks players use (Tailscale 100.64.0.0/10, ZeroTier, LAN, and a public
+    /// "Internet" address, which only servers/VPSes have on an interface; home PCs sit behind a router).</summary>
     public static class Net
     {
         public static List<Dictionary<string, object>> Addresses()
@@ -379,7 +498,8 @@ namespace HmmRevive.Launcher
                     string kind = b[0] == 100 && (b[1] & 0xC0) == 64 ? "Tailscale"
                         : ni.Description.IndexOf("ZeroTier", StringComparison.OrdinalIgnoreCase) >= 0 || ni.Name.IndexOf("ZeroTier", StringComparison.OrdinalIgnoreCase) >= 0 ? "ZeroTier"
                         : ni.Description.IndexOf("WireGuard", StringComparison.OrdinalIgnoreCase) >= 0 ? "WireGuard"
-                        : "LAN";
+                        : b[0] == 10 || (b[0] == 172 && (b[1] & 0xF0) == 16) || (b[0] == 192 && b[1] == 168) || (b[0] == 100 && (b[1] & 0xC0) == 64) ? "LAN"
+                        : "Internet";
                     list.Add(new Dictionary<string, object> { ["ip"] = u.Address.ToString(), ["kind"] = kind, ["mask"] = u.IPv4Mask?.ToString() });
                 }
             }
@@ -392,7 +512,7 @@ namespace HmmRevive.Launcher
             var list = new List<IPAddress> { IPAddress.Broadcast };
             foreach (var a in Addresses())
             {
-                if (a["mask"] == null || a["kind"] as string == "Tailscale") continue;
+                if (a["mask"] == null || a["kind"] as string == "Tailscale" || a["kind"] as string == "Internet") continue;
                 byte[] ip = IPAddress.Parse((string)a["ip"]).GetAddressBytes(), mask = IPAddress.Parse((string)a["mask"]).GetAddressBytes();
                 for (int i = 0; i < 4; i++) ip[i] = (byte)(ip[i] | ~mask[i]);
                 list.Add(new IPAddress(ip));
@@ -458,7 +578,10 @@ namespace HmmRevive.Launcher
             catch { return false; }
         }
 
-        public static bool Ready() => RuleExists(GameRule, Paths.GameExe) && RuleExists(LobbyRule, Paths.LauncherExe) && RuleExists(FindRule, Paths.LauncherExe);
+        private static string GameRuleOf(string build) => Builds.IsLegacy(build) ? GameRule + " " + build : GameRule;
+
+        public static bool Ready() => Builds.ReadyBuilds().DefaultIfEmpty(Builds.Steam).All(b => RuleExists(GameRuleOf(b), Builds.GameExe(b)))
+            && RuleExists(LobbyRule, Paths.LauncherExe) && RuleExists(FindRule, Paths.LauncherExe);
 
         public static volatile bool Cached;
         public static void Refresh() => Cached = Ready();
@@ -468,14 +591,17 @@ namespace HmmRevive.Launcher
         /// any Allow rule.</summary>
         public static bool Setup(int gamePort, int lobbyPort)
         {
-            string game = Paths.GameExe.Replace("'", "''"), me = Paths.LauncherExe.Replace("'", "''");
-            const string from = "-RemoteAddress LocalSubnet,100.64.0.0/10 -Action Allow -Profile Any";
+            string me = Paths.LauncherExe.Replace("'", "''");
+            var games = Builds.ReadyBuilds().DefaultIfEmpty(Builds.Steam).Select(b => (rule: GameRuleOf(b), exe: Builds.GameExe(b).Replace("'", "''"))).ToList();
+            // A PC with a public address (a server/VPS) is joined straight over the internet: allow any address then.
+            bool publicHost = Net.Addresses().Any(a => a["kind"] as string == "Internet");
+            string from = $"-RemoteAddress {(publicHost ? "Any" : "LocalSubnet,100.64.0.0/10")} -Action Allow -Profile Any";
             string cmd =
-                $"Remove-NetFirewallRule -DisplayName '{GameRule}','{LobbyRule}','{FindRule}' -ErrorAction SilentlyContinue; " +
-                $"New-NetFirewallRule -DisplayName '{GameRule}' -Direction Inbound -Protocol UDP -LocalPort {gamePort} -Program '{game}' {from} | Out-Null; " +
+                $"Remove-NetFirewallRule -DisplayName {string.Join(",", games.Select(g => $"'{g.rule}'"))},'{LobbyRule}','{FindRule}' -ErrorAction SilentlyContinue; " +
+                string.Concat(games.Select(g => $"New-NetFirewallRule -DisplayName '{g.rule}' -Direction Inbound -Protocol UDP -LocalPort {gamePort} -Program '{g.exe}' {from} | Out-Null; ")) +
                 $"New-NetFirewallRule -DisplayName '{LobbyRule}' -Direction Inbound -Protocol TCP -LocalPort {lobbyPort} -Program '{me}' {from} | Out-Null; " +
                 $"New-NetFirewallRule -DisplayName '{FindRule}' -Direction Inbound -Protocol UDP -LocalPort {lobbyPort} -Program '{me}' {from} | Out-Null; " +
-                $"Get-NetFirewallApplicationFilter | Where-Object {{ $_.Program -eq '{game}' -or $_.Program -eq '{me}' }} | Get-NetFirewallRule | " +
+                $"Get-NetFirewallApplicationFilter | Where-Object {{ {string.Concat(games.Select(g => $"$_.Program -eq '{g.exe}' -or "))}$_.Program -eq '{me}' }} | Get-NetFirewallRule | " +
                 "Where-Object { $_.Action -eq 'Block' -and $_.Direction -eq 'Inbound' } | Disable-NetFirewallRule";
             string enc = Convert.ToBase64String(Encoding.Unicode.GetBytes(cmd));
             try

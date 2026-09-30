@@ -19,6 +19,7 @@ namespace HmmRevive.Launcher
     ///   --lobby-port N     lobby port (default 9697)   --game-port N   match server port (default 9696)
     ///   --settings FILE    settings file (default launcher-settings.json in root; a second launcher on one PC for tests)
     ///   --no-browser       don't open a window        --test-background   hidden, muted games (automated tests)
+    ///   --test-score N     points to win on an old build's match (tests of the match end; players keep the game's rule)
     /// </summary>
     public static class Program
     {
@@ -41,6 +42,7 @@ namespace HmmRevive.Launcher
         }
 
         private static int _uiPort, _lobbyPort = 9697, _gamePort = 9696;
+        public static int TestScore;
         private static Lobby _lobby;
         private static Session _session;
         private static readonly object Gate = new object();
@@ -64,6 +66,7 @@ namespace HmmRevive.Launcher
                     case "--game-port": _gamePort = int.Parse(Next()); break;
                     case "--no-browser": browser = false; break;
                     case "--test-background": Game.TestBackground = true; break;
+                    case "--test-score": TestScore = int.Parse(Next()); break;
                 }
             }
             Console.Title = "HMM Revive " + Version;
@@ -136,7 +139,7 @@ namespace HmmRevive.Launcher
                 case "/api/state": return Response.Json(State());
                 case "/api/settings": return SaveSettings(d);
                 case "/api/discover": return Response.Json(new Dictionary<string, object> { ["lobbies"] = Discovery.Find(_lobbyPort).ToArray() });
-                case "/api/host/open": return HostOpen();
+                case "/api/host/open": return HostOpen(d?.Str("build") ?? Settings.Data.Str("hostBuild") ?? Builds.Steam);
                 case "/api/host/close": return HostClose();
                 case "/api/host/configure":
                     if (_lobby == null) return Response.Error("You're not hosting.");
@@ -152,6 +155,9 @@ namespace HmmRevive.Launcher
                 case "/api/host/kick":
                     _lobby?.Kick(d.Str("id"));
                     return Ok();
+                case "/api/host/draft-reset":
+                    _lobby?.ResetDraft();
+                    return Ok();
                 case "/api/host/move":
                     _lobby?.MoveMember(d.Str("id"), d.Str("team"));
                     return Ok();
@@ -163,7 +169,14 @@ namespace HmmRevive.Launcher
                 {
                     Session s = _session;
                     if (s == null) return Response.Error("You're not in a lobby.");
-                    string err = s.SendChoices(d.ContainsKey("ready") ? d.Bool("ready") : (bool?)null, d.Str("team"));
+                    string err = s.SendChoices(d.ContainsKey("ready") ? d.Bool("ready") : (bool?)null, d.Str("team"), d.Str("car"));
+                    return err == null ? Ok() : Response.Error(err);
+                }
+                case "/api/lobby/draft":
+                {
+                    Session s = _session;
+                    if (s == null) return Response.Error("You're not in a lobby.");
+                    string err = s.DraftAct(d.Str("action"), d.Str("car"));
                     return err == null ? Ok() : Response.Error(err);
                 }
                 case "/api/lobby/relaunch":
@@ -174,8 +187,30 @@ namespace HmmRevive.Launcher
                     Game.StopClient();
                     return Ok();
                 case "/api/setup":
-                    Game.RunSetup(d.Str("gameDir") ?? Game.FindSteamGame());
-                    return Ok();
+                {
+                    // {} = the Steam copy, {build} = set up/update that copy, {gameDir} = a folder the player chose.
+                    string build = d.Str("build") ?? Builds.Steam;
+                    string dir = Builds.CopyDir(build);
+                    if (d.Str("gameDir") != null)
+                    {
+                        dir = Game.GameDirOf(d.Str("gameDir"), out string notGame);
+                        if (dir == null) return Response.Error(notGame);
+                        build = Builds.Detect(dir);
+                        if (build == Builds.Unsupported) return Response.Error("That copy of the game isn't supported.");
+                        if (Builds.IsLegacy(build))
+                        {
+                            var copies = Settings.Data.Obj("copies") ?? new Dictionary<string, object>();
+                            copies[build] = dir; // kept for later updates
+                            Settings.Data["copies"] = copies;
+                        }
+                        else Settings.Data["gameDir"] = dir;
+                        Settings.Save();
+                    }
+                    Game.RunSetup(build, dir);
+                    return Ok(new Dictionary<string, object> { ["build"] = build });
+                }
+                case "/api/setup/browse":
+                    return Ok(new Dictionary<string, object> { ["file"] = Game.BrowseForGame() });
                 case "/api/firewall":
                     return Ok(new Dictionary<string, object> { ["ok"] = Firewall.Setup(_gamePort, _lobbyPort) });
                 case "/api/open-folder":
@@ -197,7 +232,8 @@ namespace HmmRevive.Launcher
             if (d.ContainsKey("car") && Catalog.CarId(d.Str("car")) is int car) Settings.Data["car"] = car.ToString();
             if (d.ContainsKey("skin"))
             {
-                string carName = Catalog.CarName(Settings.Data.Str("car"));
+                // skinCar: the car the skin is for when it isn't the settings' car (a drafted car in the lobby)
+                string carName = Catalog.CarName(d.Str("skinCar") ?? Settings.Data.Str("car"));
                 var skins = Settings.Data.Obj("skins") ?? new Dictionary<string, object>();
                 if (carName != null) skins[carName] = System.Text.RegularExpressions.Regex.Replace(d.Str("skin") ?? "0", @"[\s#""']", "");
                 Settings.Data["skins"] = skins;
@@ -211,14 +247,15 @@ namespace HmmRevive.Launcher
             return Ok();
         }
 
-        private static Response HostOpen()
+        private static Response HostOpen(string build)
         {
             lock (Gate)
             {
                 if (_lobby != null) return Ok();
-                if (!Paths.GameReady) return Response.Error("Set up the game first.");
+                if (!Builds.Ready(build)) return Response.Error("Set up the game first.");
+                Settings.Set("hostBuild", build);
                 LeaveLobby();
-                var lobby = new Lobby(_lobbyPort, _gamePort);
+                var lobby = new Lobby(_lobbyPort, _gamePort, build);
                 if (!lobby.Open()) return Response.Error($"Port {_lobbyPort} is taken: is another HMM Revive launcher hosting on this PC?");
                 _lobby = lobby;
                 _session = Session.JoinOwn(lobby, out string error);
@@ -270,9 +307,11 @@ namespace HmmRevive.Launcher
         // Straight into a match server, like play.bat (servers started by host.bat, or a relay address).
         private static Response QuickJoin(string address)
         {
-            if (!Paths.GameReady) return Response.Error("Set up the game first.");
+            // host.bat servers and relays run the Steam build; without it, the old build that is set up.
+            string build = Builds.ReadyBuilds().FirstOrDefault();
+            if (build == null) return Response.Error("Set up the game first.");
             if (!Session.ParseAddress(address, _gamePort, out string host, out int port)) return Response.Error("That doesn't look like an address.");
-            Game.StartClient(host, port, null, 0);
+            Game.StartClient(build, host, port, null, 0);
             Settings.AddRecent(address.Trim());
             return Ok();
         }
@@ -302,8 +341,12 @@ namespace HmmRevive.Launcher
                 ["needsUpdate"] = Paths.GameReady && kit != null && game != kit,
                 ["canSetup"] = Paths.Patcher != null,
                 ["setupStatus"] = Game.SetupStatus,
+                ["setupBuild"] = Game.SetupBuild,
+                ["copies"] = Builds.CopiesJson(),
+                ["builds"] = Builds.ReadyBuilds().ToArray(),
+                ["hostBuild"] = _lobby?.Build,
                 ["setupLog"] = setupLog.Length > 4000 ? setupLog.Substring(setupLog.Length - 4000) : setupLog,
-                ["steamGame"] = Game.FindSteamGame(),
+                ["gameDir"] = Game.FindGame(),
                 ["addresses"] = Net.Addresses().ToArray(),
                 ["hosting"] = _lobby != null,
                 ["hostSetup"] = _lobby?.SetupJson(),

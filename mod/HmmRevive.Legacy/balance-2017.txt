@@ -1,0 +1,36 @@
+# HMM Revive: value overrides for the 2017 game build, applied by the match server (clients need nothing).
+# Everything not listed keeps the game's original number.
+#
+# One override per line:   AssetName  Field.Path[index].Field = value      (# starts a comment)
+# * in AssetName matches any text: *_BombGadgetInfo = the bomb gadget of every car.
+# The server log (hmmrevive-server-<port>.log) shows each change as "BALANCE <asset> ... old -> new".
+#
+# Pending: the new numbers for the bomb (damage, knockback) and Killer J. (Troll) aren't decided yet.
+# Original values, for reference:
+#
+# Killer J. (Troll), weapon 1 (Troll0Beyblade): damage per hit, angular push
+#Troll0Beyblade     Damage[0].Amount = 10
+#Troll0Beyblade     Damage[4].Amount = 360
+#
+# Killer J., weapon 2 (Troll1CrazyBoost): hit damage, then damage every 0.02 s
+#Troll1CrazyBoost   Damage[0].Amount = 75
+#Troll1CrazyBoost   Damage[1].Amount = 5.5
+#
+# Killer J., ultimate (Troll2CrazyBlast): hit damage, then damage every 0.2 s for 3 s, angular push
+#Troll2CrazyBlast   Damage[0].Amount = 80
+#Troll2CrazyBlast   Damage[1].Amount = 10
+#
+# Bomb, as every car uses it (same values on all 13 cars):
+# releasing a spun bomb: damage (HPLightDamage), extra mass of the bomb while it flies
+#*_BombGadgetInfo   SpinningReleaseModifiers[2].Amount = 200
+#*_BombGadgetInfo   SpinningReleaseModifiers[1].Amount = 5
+# grabbing the bomb: the pull (impulse) on the bomb
+#*_BombGadgetInfo   BombLinkCreatedModifiers[0].Amount = 60
+# carrier: how hard the bomb pushes back on the carrier
+#*_BombGadgetInfo   PushBackForce = 2
+#
+# The bomb itself (BombInfo_Test1): delivery explosion radius (its explosion modifiers are empty in this build),
+# weight and push
+#BombInfo_Test1     ExplosionRadius = 35
+#BombInfo_Test1     Movement.Mass = 2
+#BombInfo_Test1     Movement.PushForce = 1

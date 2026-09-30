@@ -11,7 +11,9 @@ namespace HmmRevive
 {
     /// <summary>
     /// Server: out-of-combat repair. A car that took no damage for <see cref="Entry.RepairDelay"/> seconds repairs
-    /// <see cref="Entry.RepairPercentPerSecond"/>% of its max HP per second until it is full or gets hit again.
+    /// <see cref="Entry.RepairHpPerSecond"/> HP per second (or <see cref="Entry.RepairPercentPerSecond"/>% of its max HP per
+    /// second when set) until it is full or gets hit again. The default, 100 HP/s flat, is what the arenas' repair areas
+    /// give (HazardArea with the Repair_Hazard modifiers, e.g. Metal God Arena; players remember regen matching them).
     ///
     /// Hoplon's own version (MartyrModifiersOutOfCombat in the OutOfCombatGadget slot) is still in the code, but every
     /// car's slot now holds Dummy_GenericGadget and its effect assets are gone, so this redoes it by hand. "Took damage"
@@ -38,7 +40,7 @@ namespace HmmRevive
         {
             if (!Entry.ServerMode || Entry.RepairDelay < 0) return;
             if (hub.GetComponent<OutOfCombatRepair>() == null) hub.gameObject.AddComponent<OutOfCombatRepair>();
-            Log.Info($"out-of-combat repair: {Entry.RepairPercentPerSecond}% max HP/s after {Entry.RepairDelay}s without damage");
+            Log.Info($"out-of-combat repair: {Entry.RepairRate} after {Entry.RepairDelay}s without damage");
         }
 
         private void Update()
@@ -93,7 +95,7 @@ namespace HmmRevive
                     if (!s.Repairing) Log.Info($"OOC start {p.Name} hp={data.HP:0}/{data.HPMax}");
                     if (!s.Repairing) s.Full = false;
                     s.Repairing = true;
-                    data.HP = Mathf.Min(data.HPMax, data.HP + data.HPMax * Entry.RepairPercentPerSecond / 100f * dt);
+                    data.HP = Mathf.Min(data.HPMax, data.HP + (Entry.RepairPercentPerSecond > 0f ? data.HPMax * Entry.RepairPercentPerSecond / 100f : Entry.RepairHpPerSecond) * dt);
                     if (data.HP >= data.HPMax && !s.Full) Log.Info($"OOC full {p.Name} hp={data.HPMax}");
                     if (data.HP >= data.HPMax) s.Full = true;
                 }

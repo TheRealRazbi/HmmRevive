@@ -1,12 +1,12 @@
 HMM Revive kit @VERSION@
 ========================
 Play Heavy Metal Machines again on a private server run by one of you. Free, private and unofficial.
-This kit contains no game files; it patches a copy of YOUR OWN Steam install.
+This kit contains no game files; it makes a patched copy of YOUR OWN game.
 (Portugues: veja LEIA-ME.txt)
 What's new in this version: CHANGELOG.txt
 
 Everyone needs
-  1. Heavy Metal Machines installed from Steam (it must be in your library).
+  1. Heavy Metal Machines: installed from Steam (free), or a copy of the game folder anywhere on your PC.
   2. A way to reach the host's PC: Tailscale (https://tailscale.com/download) or ZeroTier (https://www.zerotier.com),
      installed and joined to the same network as the host. On the same home network you need neither.
 
@@ -14,8 +14,9 @@ Start
   - Unzip this folder anywhere. The same drive as the game is best (no extra disk space used).
     The folder path must use plain letters only (no accents like g/c/a with marks): if your Windows user name has
     them, C:\Users\<name>\Downloads crashes the game, so use something like C:\HMM-Revive instead.
-  - Double-click HMM-Revive.exe. The first time it offers to set up: it finds the game and builds a patched copy
-    in .\instance (your Steam install is not changed). A window opens with everything else:
+  - Double-click HMM-Revive.exe. The first time it offers to set up: it finds the game in Steam and builds a patched
+    copy in .\instance (the original is not changed). Game somewhere else? Click "Choose game folder" and pick HMM.exe
+    in it. A window opens with everything else:
       Play      lobbies hosted on your network; click Join, or type the host's address.
       Host      open your own lobby.
       Settings  your name, car, skin, screen resolution.
@@ -46,9 +47,24 @@ HOST (one person, on a PC that stays on during the match)
   - ZeroTier: players join your network and you authorize them in its admin page.
   - Click "Open lobby". Players on your network see it under Play; others can type the address shown in the lobby.
 
+Tournaments (in the lobby's match settings, host only)
+  - "Draft before each match": starting the match first starts a draft. A random team goes first, then the teams
+    take turns banning cars and then picking them (order A1 B2 A2 B1 B1 A1 by default, A = the team that goes first;
+    the host can change it). After the draft each player chooses one of the team's cars and clicks Ready again.
+  - "2 spectator seats": up to two people watch the match with the game's spectator camera, without a car
+    (click "Watch" in the lobby). They can join a match that is already running.
+
+Older version of the game (experimental, not ready yet)
+  - HMM-Revive.exe can also run an older version of Heavy Metal Machines. It's experimental: expect problems. If you have a copy of it, go to Settings >
+    Game copies > "Add a game copy" and pick its HMM.exe: the launcher tells you whether that copy is supported and
+    sets it up in .\instance-<version>. When you host with more than one copy set up, you choose the game before
+    opening the lobby; everyone in the lobby needs the same copy set up. In that version you pick your car in the
+    game's own pick screen when the match starts, and the game keeps its original shop and numbers.
+
 The old way (still works): host.bat starts a server from menus, play.bat joins one (also for relay addresses),
 stop.bat stops both. In HMM-Revive.exe, Play > "Direct connect" joins such servers too.
 
 Something went wrong? Tell them your version (top of the HMM-Revive window) and send launcher-settings.log plus the newest
 instance\hmmrevive-client-*.log (players) or instance\hmmrevive-server-9696.log and instance\server_unity_9696.log (host)
+(for the older version of the game, the same files in its instance-<version> folder)
 to whoever gave you this kit.

@@ -1,12 +1,12 @@
 HMM Revive kit @VERSION@
 ========================
 Jogue Heavy Metal Machines de novo, num servidor privado rodando no PC de um de vocês. Grátis, privado e não oficial.
-Este kit não contém arquivos do jogo; ele cria uma cópia modificada da SUA instalação da Steam.
+Este kit não contém arquivos do jogo; ele cria uma cópia modificada do SEU próprio jogo.
 (English: see README.txt)
 Novidades desta versão: CHANGELOG.txt (em inglês)
 
 Todo mundo precisa de
-  1. Heavy Metal Machines instalado pela Steam (precisa estar na sua biblioteca).
+  1. Heavy Metal Machines: instalado pela Steam (grátis), ou uma cópia da pasta do jogo em qualquer lugar do PC.
   2. Um jeito de chegar no PC do host: Tailscale (https://tailscale.com/download) ou ZeroTier (https://www.zerotier.com),
      instalado e na mesma rede do host. Na mesma rede de casa não precisa de nenhum dos dois.
 
@@ -14,8 +14,9 @@ Começando
   - Descompacte esta pasta em qualquer lugar. De preferência no mesmo disco do jogo (não gasta espaço extra).
     O caminho da pasta não pode ter acentos nem letras especiais: se seu usuário do Windows tem (ex.: João),
     C:\Users\<nome>\Downloads faz o jogo fechar; use algo como C:\HMM-Revive.
-  - Clique duas vezes em HMM-Revive.exe. Na primeira vez ele oferece a instalação: encontra o jogo e cria uma cópia
-    modificada em .\instance (sua instalação da Steam não é alterada). Abre uma janela com todo o resto:
+  - Clique duas vezes em HMM-Revive.exe. Na primeira vez ele oferece a instalação: encontra o jogo na Steam e cria uma cópia
+    modificada em .\instance (o original não é alterado). Jogo em outra pasta? Clique em "Escolher pasta do jogo"
+    e selecione o HMM.exe. Abre uma janela com todo o resto:
       Play      salas (lobbies) abertas na sua rede; clique em Join, ou digite o endereço do host.
       Host      abra a sua própria sala.
       Settings  seu nome, carro, skin, resolução da tela.
@@ -47,9 +48,24 @@ HOST (uma pessoa, num PC que fica ligado durante a partida)
   - ZeroTier: os jogadores entram na sua rede e você autoriza cada um na página de administração dela.
   - Clique em "Open lobby". Quem está na sua rede vê a sala em Play; os outros podem digitar o endereço que aparece na sala.
 
+Torneios (nas configurações da partida, só o host)
+  - "Draft antes de cada partida": começar a partida primeiro começa um draft. Um time sorteado começa, e os times
+    se revezam banindo carros e depois escolhendo (ordem A1 B2 A2 B1 B1 A1 por padrão, A = o time que começa; o host
+    pode mudar). Depois do draft cada jogador escolhe um dos carros do time e clica em Pronto de novo.
+  - "2 vagas de espectador": até duas pessoas assistem à partida com a câmera de espectador do jogo, sem carro
+    (clique em "Assistir" na sala). Elas podem entrar numa partida que já está rolando.
+
+Versão mais antiga do jogo (experimental, ainda não está pronta)
+  - O HMM-Revive.exe também consegue rodar uma versão mais antiga do Heavy Metal Machines. É experimental: espere problemas. Se você tem uma cópia dela, vá em
+    Configurações > Cópias do jogo > "Adicionar cópia do jogo" e selecione o HMM.exe dela: o launcher diz se essa
+    cópia é suportada e instala ela em .\instance-<versão>. Ao hospedar com mais de uma cópia instalada, você escolhe
+    o jogo antes de abrir a sala; todos na sala precisam ter a mesma cópia instalada. Nessa versão você escolhe o
+    carro na tela de escolha do próprio jogo quando a partida começa, e o jogo mantém a loja e os números originais.
+
 O jeito antigo (ainda funciona): host.bat abre um servidor pelos menus, play.bat entra num servidor (também para
 endereços de relay), stop.bat fecha os dois. No HMM-Revive.exe, Play > "Direct connect" também entra nesses servidores.
 
 Deu problema? Diga sua versão (no topo da janela do HMM-Revive) e mande o launcher-settings.log e o arquivo mais novo
 instance\hmmrevive-client-*.log (jogadores) ou instance\hmmrevive-server-9696.log e instance\server_unity_9696.log (host)
+(na versão mais antiga do jogo, os mesmos arquivos na pasta instance-<versão> dela)
 para quem te passou este kit.

@@ -40,6 +40,14 @@ namespace HmmRevive
             return login;
         }
 
+        // Client, start of UserInfo.InternalConnectToServer(narrator, ...): narrator = Narrator(narrator). A spectator
+        // logs in as a narrator; the server (SkipSwordfish) then makes it one in FakeAuthentication → FakeNarrator.
+        public static bool Narrator(bool narrator)
+        {
+            if (Entry.Spectate && !narrator) Log.Info("connecting as a spectator (narrator)");
+            return narrator || Entry.Spectate;
+        }
+
         // Server, start of AuthenticationManager.FakeAuthentication: username = TakeFromLogin(username).
         public static string TakeFromLogin(string login)
         {

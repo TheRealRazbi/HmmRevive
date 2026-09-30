@@ -20,7 +20,8 @@ difficulty and cars per team, out-of-combat repair.
 
 ## Play
 
-You need Windows and Heavy Metal Machines in your Steam library (build `Release.15.00.250`).
+You need Windows and Heavy Metal Machines (build `Release.15.00.250`): from your Steam library, or a copy of the game
+folder anywhere on your PC.
 
 1. Download `HMM-Revive-friend-kit-<version>.zip` from [Releases](../../releases).
 2. Unzip it to a folder whose path has **no accented or special letters**, e.g. `C:\HMM-Revive`

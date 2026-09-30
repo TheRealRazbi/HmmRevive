@@ -12,8 +12,9 @@ param(
     [switch]$SameTeam, # all humans on Blue (then use -BluBots 4-humans); default alternates humans Red/Blue
     [int]$Score = 0,   # points to win (0 = default 3); pass the same -Score to clients
     [switch]$Graphics, # run with a GPU device (no -nographics) if headless mode breaks something
+    [switch]$ScanHeal, # test: log everything in the match that can heal (HealScan.cs)
     [switch]$Chaos,    # test mode: every car switches to a random car on each death and each round
-    [string]$Repair = "", # out-of-combat repair: "off", or "DELAY,PERCENT" (default 5,7 = 7% max HP/s after 5 s unhit)
+    [string]$Repair = "", # out-of-combat repair: "off", or "DELAY,RATE", RATE = HP/s ("100hp") or % of max HP/s ("21") (default 5,100hp, like the arenas' repair areas)
     [int]$EndQuit = -1, # seconds the server stays up after the match ends (mod default 30; 0 = forever)
     [string]$ChaosCars = "", # -Chaos limited to these car ids, e.g. "8,7" swaps Windrider <-> Full Metal Judge
     [string]$Instance = "instance" # game instance folder in the repo (e.g. instance-dev built with HMM_INSTANCE=instance-dev)
@@ -25,6 +26,7 @@ $a = @("-batchmode")
 if (-not $Graphics) { $a += "-nographics" }
 if ($Score -gt 0) { $a += "--hmmrevive-score=$Score" }
 if ($Chaos) { $a += "--hmmrevive-chaos" }
+if ($ScanHeal) { $a += "--hmmrevive-scan-heal" }
 if ($EndQuit -ge 0) { $a += "--hmmrevive-end-quit=$EndQuit" }
 if ($Repair) { $a += "--hmmrevive-repair=$($Repair -replace '\s','')" }
 if ($ChaosCars) { $a += "--hmmrevive-chaos-cars=$($ChaosCars -replace '\s','')" }
