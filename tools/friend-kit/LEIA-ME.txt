@@ -48,9 +48,25 @@ HOST (uma pessoa, num PC que fica ligado durante a partida)
   - ZeroTier: os jogadores entram na sua rede e você autoriza cada um na página de administração dela.
   - Clique em "Open lobby". Quem está na sua rede vê a sala em Play; os outros podem digitar o endereço que aparece na sala.
 
+Torneios (nas configurações da partida, só o host)
+  - "Draft antes de cada partida": começar a partida primeiro começa um draft. Um time sorteado começa, e os times
+    se revezam banindo carros e depois escolhendo (por padrão banimentos A1 B1, escolhas A1 B2 A2 B1 A1 B1; A = o time
+    que começa; o host pode mudar as duas). Cada turno tem 60 segundos por padrão; quando o tempo acaba o turno é
+    completado ao acaso. Depois do draft cada jogador escolhe um dos carros do time e clica em Pronto de novo.
+  - "2 vagas de espectador": até duas pessoas assistem à partida com a câmera de espectador do jogo, sem carro
+    (clique em "Assistir" na sala). Elas podem entrar numa partida que já está rolando.
+
+Versão mais antiga do jogo (experimental, ainda não está pronta)
+  - O HMM-Revive.exe também consegue rodar uma versão mais antiga do Heavy Metal Machines. É experimental: espere problemas. Se você tem uma cópia dela, vá em
+    Configurações > Cópias do jogo > "Adicionar cópia do jogo" e selecione o HMM.exe dela: o launcher diz se essa
+    cópia é suportada e instala ela em .\instance-<versão>. Ao hospedar com mais de uma cópia instalada, você escolhe
+    o jogo antes de abrir a sala; todos na sala precisam ter a mesma cópia instalada. Nessa versão você escolhe o
+    carro na tela de escolha do próprio jogo quando a partida começa, e o jogo mantém a loja e os números originais.
+
 O jeito antigo (ainda funciona): host.bat abre um servidor pelos menus, play.bat entra num servidor (também para
 endereços de relay), stop.bat fecha os dois. No HMM-Revive.exe, Play > "Direct connect" também entra nesses servidores.
 
 Deu problema? Diga sua versão (no topo da janela do HMM-Revive) e mande o launcher-settings.log e o arquivo mais novo
 instance\hmmrevive-client-*.log (jogadores) ou instance\hmmrevive-server-9696.log e instance\server_unity_9696.log (host)
+(na versão mais antiga do jogo, os mesmos arquivos na pasta instance-<versão> dela)
 para quem te passou este kit.

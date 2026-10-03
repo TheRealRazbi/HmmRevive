@@ -2,6 +2,51 @@
 
 Newest first. The version is shown on the first line of every kit window (setup, play, host).
 
+## 1.3 (2026-10-03)
+
+New since the 1.3 preview:
+
+- **Draft order fixed.** Bans and picks now have their own order. By default team A bans 1 car, then team B bans 1;
+  then the picks go `A1 B2 A2 B1 A1 B1` (A picks 1, B picks 2, A picks 2, then one car at a time). A is the team that
+  goes first. The host can still change both orders.
+- **Time limit per draft turn:** 60 seconds by default, like the game's own pick screen. When the time runs out, the
+  turn is completed at random (cars the team already selected are kept). The host can pick 30-120 seconds or no limit.
+- **Spectators can come back.** A spectator who closed their game, or left the lobby, couldn't watch the running
+  match again, even with a free seat. Now they can: click "Start my game again", or join the lobby again.
+  Leaving the lobby as a spectator also closes your game, and a few seconds later your seat is free for someone else.
+  A player who joins while a match is running takes a free spectator seat and watches it.
+
+The rest of 1.3 (from the preview):
+
+For tournaments:
+
+- **Draft:** the host can turn on "Draft before each match" in the lobby's match settings. Starting the match then
+  starts the draft first. A random team goes first, and the teams take turns banning cars, then picking them (order
+  above). Each team picks as many cars as it has players and bots.
+  - Any player of the team whose turn it is clicks cars on the draft board, then "Lock in". Teammates see the
+    selection as it happens; the other team only sees it once it's locked in.
+  - Banned cars and the other team's picks can't be picked.
+  - After the draft, each player chooses which of the team's cars they drive (choosing a teammate's car swaps
+    with them), and bots get the cars left over. Everyone clicks Ready again, and the match starts.
+  - Teams are locked from the draft until the match ends. The host can reset the draft. Every match gets a new draft.
+- **2 spectator seats:** the host can turn on "2 spectator seats". Spectators watch the match with the game's own
+  spectator camera and don't drive a car. Click "Watch" in the lobby's Spectators box. Spectators can also join a
+  match that is already running. When the teams are full or drafted, new players join as spectators if a seat is free.
+- The draft and spectators need the Steam version of the game.
+
+Also in 1.3:
+
+- **Heavy Metal Machines from November 2017 (experimental, not ready yet).** Besides the Steam version, the
+  launcher can run that older version. It's marked experimental: expect problems, and don't use it for real
+  matches yet. If you have a copy, add it under Settings > Game copies > "Add a game copy" and pick its HMM.exe.
+  The launcher tells you whether the copy is supported and sets it up in its own folder (`instance-2017`). The
+  folder you picked isn't changed.
+  - In that version you pick your car and skin in the game's own pick screen, and it keeps the game's original
+    shop and numbers. It has one arena, and no draft or spectators.
+  - With more than one copy set up, the host picks the game before opening the lobby. The match list shows which
+    game a lobby plays.
+- Everyone in a lobby needs HMM Revive 1.3.
+
 ## 1.2 (2026-09-29)
 
 New since the 1.2 preview:

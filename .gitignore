@@ -20,3 +20,9 @@ notes/_*.txt
 launcher/settings.json
 launcher-settings.json
 launcher-settings.log
+
+# per-PC build settings (tools/build.sh, tools/make_friend_kit.sh)
+tools/local.env
+
+# per-PC Claude settings (idlegate hook)
+.claude/settings.local.json

@@ -6,6 +6,10 @@
 // original install is never written to). Only Assembly-CSharp-firstpass.dll is replaced with a
 // real copy in which Infra.PreStart.Awake() first calls HmmRevive.Entry.Init(). The mod DLLs from
 // <modDir> are copied into <instanceDir>/HMM_Data/Managed.
+//
+// The game build is recognized by the sha256 of HMM_Data/Managed/Assembly-CSharp-firstpass.dll (Builds below). The
+// current (Steam) build is patched as above; a supported older build gets its own mod from <modDir>/<build>/ and its
+// own patch table (Legacy.cs). The first line of output is "build: <id>".
 using System.Runtime.InteropServices;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -26,6 +30,15 @@ static class Program
         }
         string game = Path.GetFullPath(args[0]), inst = Path.GetFullPath(args[1]), mod = Path.GetFullPath(args[2]);
         string managedRel = Path.Combine("HMM_Data", "Managed");
+
+        string build = Builds.Detect(game);
+        Console.WriteLine("build: " + build);
+        if (build == Builds.Unsupported)
+        {
+            Console.Error.WriteLine("This copy of the game isn't supported.");
+            return 3;
+        }
+        if (build != Builds.Steam) return Legacy.Run(build, game, inst, mod);
 
         int linked = 0, copied = 0;
         foreach (string src in Directory.EnumerateFiles(game, "*", SearchOption.AllDirectories))
@@ -126,6 +139,20 @@ static class Program
             il.Create(OpCodes.Ldarg_0),
             il.Create(OpCodes.Ldarg_1),
             il.Create(OpCodes.Call, Hook("HmmRevive.CarChoice", "ChooseTeam")),
+        });
+
+        Prologue(Target("Pocketverse.AuthenticationManager", "FakeNarrator"), il => new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Call, Hook("HmmRevive.CarChoice", "FreeNarratorSeats")),
+        });
+
+        var connect = Target("HeavyMetalMachines.UserInfo", "InternalConnectToServer");
+        Prologue(connect, il => new[]
+        {
+            il.Create(OpCodes.Ldarg_1),
+            il.Create(OpCodes.Call, Hook("HmmRevive.CarChoice", "Narrator")),
+            il.Create(OpCodes.Starg_S, connect.Parameters[0]),
         });
 
         var getChar = Target("HeavyMetalMachines.CharacterSelection.Server.Swordfish.SkipSwordfishServerExecuteCharacterSelection", "GetCharacterId");

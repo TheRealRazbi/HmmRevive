@@ -47,9 +47,25 @@ HOST (one person, on a PC that stays on during the match)
   - ZeroTier: players join your network and you authorize them in its admin page.
   - Click "Open lobby". Players on your network see it under Play; others can type the address shown in the lobby.
 
+Tournaments (in the lobby's match settings, host only)
+  - "Draft before each match": starting the match first starts a draft. A random team goes first, then the teams
+    take turns banning cars and then picking them (by default bans A1 B1, picks A1 B2 A2 B1 A1 B1; A = the team that
+    goes first; the host can change both). Each turn has 60 seconds by default; when time runs out the turn is
+    completed at random. After the draft each player chooses one of the team's cars and clicks Ready again.
+  - "2 spectator seats": up to two people watch the match with the game's spectator camera, without a car
+    (click "Watch" in the lobby). They can join a match that is already running.
+
+Older version of the game (experimental, not ready yet)
+  - HMM-Revive.exe can also run an older version of Heavy Metal Machines. It's experimental: expect problems. If you have a copy of it, go to Settings >
+    Game copies > "Add a game copy" and pick its HMM.exe: the launcher tells you whether that copy is supported and
+    sets it up in .\instance-<version>. When you host with more than one copy set up, you choose the game before
+    opening the lobby; everyone in the lobby needs the same copy set up. In that version you pick your car in the
+    game's own pick screen when the match starts, and the game keeps its original shop and numbers.
+
 The old way (still works): host.bat starts a server from menus, play.bat joins one (also for relay addresses),
 stop.bat stops both. In HMM-Revive.exe, Play > "Direct connect" joins such servers too.
 
 Something went wrong? Tell them your version (top of the HMM-Revive window) and send launcher-settings.log plus the newest
 instance\hmmrevive-client-*.log (players) or instance\hmmrevive-server-9696.log and instance\server_unity_9696.log (host)
+(for the older version of the game, the same files in its instance-<version> folder)
 to whoever gave you this kit.

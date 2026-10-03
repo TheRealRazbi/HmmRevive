@@ -30,6 +30,10 @@ namespace HmmRevive
         /// <summary>Client: team to join (--hmmrevive-team=red|blue), sent with the login like the car. null = the server's choice.</summary>
         public static string Team { get; private set; }
 
+        /// <summary>Client: watch the match as a spectator (--hmmrevive-spectate): the game's narrator, no car. The server
+        /// takes two (AuthenticationManager.FakeNarrator).</summary>
+        public static bool Spectate { get; private set; }
+
         /// <summary>Server: seconds to wait after the match ends before quitting (--hmmrevive-end-quit=SECONDS, 0 = stay up),
         /// so players see the results and the host's launcher can start the next match.</summary>
         public static float EndQuitDelay { get; private set; } = 30f;
@@ -147,6 +151,8 @@ namespace HmmRevive
             string team = Array.Find(args, a => a.StartsWith("--hmmrevive-team=", StringComparison.OrdinalIgnoreCase));
             if (team != null) Team = team.Substring("--hmmrevive-team=".Length).Trim('"', '\'', ' ').ToLowerInvariant();
             if (Team != "red" && Team != "blue") Team = null;
+            Spectate = Array.Exists(args, a => a.Equals("--hmmrevive-spectate", StringComparison.OrdinalIgnoreCase));
+            if (Spectate) Car = Skin = Team = null;
             string endQuit = Array.Find(args, a => a.StartsWith("--hmmrevive-end-quit=", StringComparison.OrdinalIgnoreCase));
             if (endQuit != null) EndQuitDelay = float.Parse(endQuit.Substring("--hmmrevive-end-quit=".Length), System.Globalization.CultureInfo.InvariantCulture);
             RedBotCars = ParseList(args, "--hmmrevive-bot-cars-red=");
@@ -191,7 +197,7 @@ namespace HmmRevive
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
             InstallTestCryptoKeys();
             HideOwnWindows();
-            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairRate} Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
+            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} Spectate={Spectate} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairRate} Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
         }
     }
 

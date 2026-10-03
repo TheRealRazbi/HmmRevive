@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mod for the older game builds (Unity 4.6.8, .NET 3.5 profile, no Zenject). One source for every old build:
+       the 2017-11-30 build is the default; the 2016-10-17 build will compile the same files with Y2016.
+       Build: dotnet build mod/HmmRevive.Legacy -c Release -p:GameManaged="<that copy>\HMM_Data\Managed"
+       (tools/build.sh passes it from HMM_2017_DIR). -->
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>HmmReviveLegacy</AssemblyName>
+    <RootNamespace>HmmRevive.Legacy</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\VERSION').Trim())</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- Don't bake the build machine's folder (user name) into the DLL's PDB path and stack traces. -->
+    <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
+  </PropertyGroup>
+  <Target Name="NeedGameManaged" BeforeTargets="ResolveAssemblyReferences" Condition="'$(GameManaged)' == '' Or !Exists('$(GameManaged)\Assembly-CSharp-firstpass.dll')">
+    <Error Text="Set GameManaged to the HMM_Data\Managed folder of a supported old game copy (-p:GameManaged=...)." />
+  </Target>
+  <ItemGroup>
+    <!-- Compile against the game's own assemblies (never copied to output, never committed). -->
+    <Reference Include="$(GameManaged)\Assembly-CSharp-firstpass.dll;$(GameManaged)\UnityEngine.dll;$(GameManaged)\ClientAPI.dll;$(GameManaged)\ClientAPI.Objects.dll;$(GameManaged)\Commons.Swordfish.dll;$(GameManaged)\Swordfish.Common.dll" Private="false" ExternallyResolved="true" />
+    <None Update="balance-2017.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -61,6 +61,8 @@
       <p data-i18n="host_intro"></p>
       <p class="hint" data-i18n="host_who"></p>
       <div id="host-checks"></div>
+      <label id="host-build-row" hidden><span data-i18n="host_game"></span> <select id="host-build"></select></label>
+      <p class="banner warn" id="host-build-warn" data-i18n="legacy_experimental" hidden></p>
       <button class="primary big" id="open-lobby"></button>
     </div>
   </section>
@@ -75,23 +77,28 @@
       <button class="ghost danger" id="leave" data-i18n="leave"></button>
     </div>
     <div class="status" id="lobby-status"></div>
+    <div class="panel draft" id="draft" hidden></div>
     <div class="teams">
       <div class="team blue"><div class="team-head"><h2 data-i18n="team_blue"></h2><span id="switch-blue"></span></div><div class="slots" id="slots-blue"></div></div>
       <div class="team red"><div class="team-head"><h2 data-i18n="team_red"></h2><span id="switch-red"></span></div><div class="slots" id="slots-red"></div></div>
     </div>
+    <div class="specs" id="specs" hidden></div>
     <div class="lobby-bottom">
       <div class="panel mine">
         <h2 data-i18n="you_title"></h2>
         <p class="hint" id="not-playing" data-i18n="not_playing_hint" hidden></p>
+        <p class="hint" id="spectating" data-i18n="spec_hint" hidden></p>
+        <p class="hint" id="drafted-car" data-i18n="drafted_car_hint" hidden></p>
         <label class="player-only"><span data-i18n="car"></span> <select id="lobby-car"></select></label>
         <label class="player-only"><span data-i18n="skin"></span> <select id="lobby-skin"></select></label>
+        <p class="hint" id="legacy-pick" data-i18n="legacy_pick_hint" hidden></p>
         <button class="ready big" id="ready"></button>
         <button class="ghost" id="relaunch" data-i18n="start_again" hidden></button>
       </div>
       <div class="panel hostbox" id="hostbox" hidden>
         <h2 data-i18n="match_settings"></h2>
-        <label><span data-i18n="arena"></span> <select id="h-arena"></select></label>
-        <label><span data-i18n="points_to_win"></span> <select id="h-score"></select></label>
+        <label class="steam-only"><span data-i18n="arena"></span> <select id="h-arena"></select></label>
+        <label class="steam-only"><span data-i18n="points_to_win"></span> <select id="h-score"></select></label>
         <div class="bots">
           <div><span class="blue-t" data-i18n="blue_bots"></span> <span class="stepper"><button data-bots="blue:-1">−</button><b id="h-blue-bots"></b><button data-bots="blue:1">+</button></span>
             <select id="h-blue-diff"></select></div>
@@ -100,9 +107,21 @@
         </div>
         <label class="check"><input type="checkbox" id="h-auto"> <span data-i18n="auto_start"></span></label>
         <label class="check"><input type="checkbox" id="h-plays"> <span data-i18n="host_plays"></span></label>
+        <div class="tourney steam-only">
+          <h2 data-i18n="tournament"></h2>
+          <label class="check"><input type="checkbox" id="h-spec"> <span data-i18n="spectator_seats"></span></label>
+          <label class="check"><input type="checkbox" id="h-draft"> <span data-i18n="draft_option"></span></label>
+          <div id="h-order-box">
+            <label><span data-i18n="draft_bans_order"></span> <input id="h-bans" class="order" spellcheck="false" autocomplete="off"></label>
+            <label><span data-i18n="draft_picks_order"></span> <input id="h-picks" class="order" spellcheck="false" autocomplete="off"></label>
+            <label><span data-i18n="draft_time"></span> <select id="h-dtime"></select></label>
+            <p class="hint" data-i18n="draft_order_hint"></p>
+          </div>
+        </div>
         <div class="row">
-          <button class="primary" id="start" data-i18n="start_now"></button>
-          <button class="danger" id="stop" data-i18n="stop_match" hidden></button>
+          <button class="primary" id="start"></button>
+          <button class="danger" id="stop" hidden></button>
+          <button id="draft-reset" data-i18n="draft_reset" hidden></button>
         </div>
         <div class="share" id="share"></div>
       </div>
@@ -129,7 +148,7 @@
         <h2 data-i18n="display"></h2>
         <label><span data-i18n="resolution"></span> <select id="s-res"></select></label>
         <label class="check"><input type="checkbox" id="s-full"> <span data-i18n="fullscreen"></span></label>
-        <h2 data-i18n="game_copy"></h2>
+        <h2 data-i18n="game_copies"></h2>
         <div id="s-game"></div>
         <h2 data-i18n="hosting"></h2>
         <div id="s-firewall"></div>
@@ -147,7 +166,9 @@
       <details><summary data-i18n="faq_server_q"></summary><p data-i18n="faq_server_a"></p></details>
       <details><summary data-i18n="faq_nogame_q"></summary><p data-i18n="faq_nogame_a"></p></details>
       <details><summary data-i18n="faq_version_q"></summary><p data-i18n="faq_version_a"></p></details>
+      <details><summary data-i18n="faq_tourney_q"></summary><p data-i18n="faq_tourney_a"></p></details>
       <details><summary data-i18n="faq_old_q"></summary><p data-i18n="faq_old_a"></p></details>
+      <details><summary data-i18n="faq_builds_q"></summary><p data-i18n="faq_builds_a"></p></details>
     </div>
   </section>
 </main>

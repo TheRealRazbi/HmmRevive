@@ -40,6 +40,28 @@ namespace HmmRevive
             return login;
         }
 
+        // Client, start of UserInfo.InternalConnectToServer(narrator, ...): narrator = Narrator(narrator). A spectator
+        // logs in as a narrator; the server (SkipSwordfish) then makes it one in FakeAuthentication → FakeNarrator.
+        public static bool Narrator(bool narrator)
+        {
+            if (Entry.Spectate && !narrator) Log.Info("connecting as a spectator (narrator)");
+            return narrator || Entry.Spectate;
+        }
+
+        // Server, start of AuthenticationManager.FakeNarrator: the game allows 2 narrators by counting logins
+        // (_narratorCount, addresses 100 + count) and never counts down, though it drops a narrator who disconnects. So
+        // after two logins nobody could watch, not even a spectator coming back. Count the narrators still there instead,
+        // and hand out the lowest free address. (A narrator still listed under the same name reconnects before this check.)
+        public static void FreeNarratorSeats(object authManager)
+        {
+            List<PlayerData> narrators = GameHubBehaviour.Hub.Players.Narrators;
+            int free = 0;
+            while (free < 2 && narrators.Exists(n => n.PlayerAddress == 100 + free)) free++;
+            FieldInfo count = authManager.GetType().GetField("_narratorCount", BindingFlags.Instance | BindingFlags.NonPublic);
+            if ((int)count.GetValue(authManager) != free) Log.Info($"spectator seats: {narrators.Count} watching, next seat {(free < 2 ? (100 + free).ToString() : "none")}");
+            count.SetValue(authManager, free);
+        }
+
         // Server, start of AuthenticationManager.FakeAuthentication: username = TakeFromLogin(username).
         public static string TakeFromLogin(string login)
         {
