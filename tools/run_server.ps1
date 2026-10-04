@@ -11,6 +11,7 @@ param(
     [string]$BluBotCars = "",
     [switch]$SameTeam, # all humans on Blue (then use -BluBots 4-humans); default alternates humans Red/Blue
     [int]$Score = 0,   # points to win (0 = default 3); pass the same -Score to clients
+    [string]$Cooldown = "", # every car's ability cooldown in seconds, e.g. "0.1" (empty = the game's own); pass the same -Cooldown to clients
     [switch]$Graphics, # run with a GPU device (no -nographics) if headless mode breaks something
     [switch]$ScanHeal, # test: log everything in the match that can heal (HealScan.cs)
     [switch]$Chaos,    # test mode: every car switches to a random car on each death and each round
@@ -25,6 +26,7 @@ Remove-Item "$inst\hmmrevive-server-$Port.log", "$inst\server_unity_$Port.log" -
 $a = @("-batchmode")
 if (-not $Graphics) { $a += "-nographics" }
 if ($Score -gt 0) { $a += "--hmmrevive-score=$Score" }
+if ($Cooldown) { $a += "--hmmrevive-cooldown=$Cooldown" }
 if ($Chaos) { $a += "--hmmrevive-chaos" }
 if ($ScanHeal) { $a += "--hmmrevive-scan-heal" }
 if ($EndQuit -ge 0) { $a += "--hmmrevive-end-quit=$EndQuit" }

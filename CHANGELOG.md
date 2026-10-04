@@ -19,6 +19,9 @@ Newest first. The version is shown on the first line of every kit window (setup,
 - **Heavy Metal Machines from September 2017 (experimental):** a second old version the launcher can set up and run,
   same rules as the November 2017 one (game's own pick screen, one arena, no draft or spectators). Add it under
   Settings > Game copies. Not ready for real matches yet.
+- **Ability cooldowns:** the host can set every car's ability cooldown in the lobby's match settings ("Ability
+  cooldowns": 0.1 to 5 seconds, or the game's own). It applies to both weapons, the special and the boost of every
+  car, players and bots, from the next match.
 - Everyone in a lobby needs HMM Revive 1.4.
 
 ## 1.3 (2026-10-03)

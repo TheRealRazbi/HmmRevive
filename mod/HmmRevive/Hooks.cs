@@ -10,6 +10,9 @@ namespace HmmRevive
     /// </summary>
     public static class Hooks
     {
+        // Start of StartCooldownBlock.GetCooldown(baseCooldown, context): baseCooldown = ScriptCooldown(baseCooldown, context).
+        public static float ScriptCooldown(float cooldown, object context) => Cooldowns.ScriptCooldown(cooldown, context);
+
         // RedirectProjectContext.FindProjectContext(string sceneName): sceneName = MapProjectContextScene(sceneName)
         public static string MapProjectContextScene(string sceneName)
         {

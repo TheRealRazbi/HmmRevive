@@ -248,6 +248,7 @@ namespace HmmRevive.Launcher
         {
             public int Port = 9696, Players = 1, Arena = 1, Score = 0, RedBots, BluBots, EndQuit = 30;
             public string Build = Builds.Steam, RedDifficulty = "auto", BluDifficulty = "auto", RedBotCars = "", BluBotCars = "";
+            public string Cooldown = ""; // seconds for every car's abilities, "" = the game's own
         }
 
         /// <summary>Headless match server, the same command line as tools/run_server.ps1.</summary>
@@ -264,6 +265,7 @@ namespace HmmRevive.Launcher
             if (o.BluBotCars != "") a.Add("--hmmrevive-bot-cars-blue=" + o.BluBotCars);
             if (o.RedDifficulty != "auto") a.Add("--hmmrevive-difficulty-red=" + o.RedDifficulty);
             if (o.BluDifficulty != "auto") a.Add("--hmmrevive-difficulty-blue=" + o.BluDifficulty);
+            if (o.Cooldown != "") a.Add("--hmmrevive-cooldown=" + o.Cooldown);
             a.AddRange(new[] { "-logFile", Path.Combine(Paths.Instance, $"server_unity_{o.Port}.log"), "--hmmrevive-server", "--Drafter=0",
                 "BeginConfig", "[Debug]", "SkipSwordfish=true", "IsDebug=true",
                 "[Game]", "PlayerCount=" + o.Players, "ArenaIndex=" + o.Arena, "RedTeamBotsCount=" + o.RedBots, "BluTeamBotsCount=" + o.BluBots,
@@ -302,7 +304,8 @@ namespace HmmRevive.Launcher
         /// <summary>This player's game in direct-connect mode, like play.bat. Team is "red", "blue" or null.</summary>
         /// <param name="team">red, blue, or spec: watch the match as one of the game's spectators (narrators)</param>
         /// <param name="car">car id, or null for the one in the settings</param>
-        public static Process StartClient(string build, string ip, int port, string team, int score, string car = null)
+        /// <param name="cooldown">the lobby's ability cooldown in seconds ("0.1"), null or "" for the game's own</param>
+        public static Process StartClient(string build, string ip, int port, string team, int score, string car = null, string cooldown = null)
         {
             StopClient();
             if (Builds.IsLegacy(build)) return StartLegacyClient(build, ip, port, team);
@@ -314,6 +317,7 @@ namespace HmmRevive.Launcher
             if (TestBackground) a.AddRange(new[] { "-batchmode", "--hmmrevive-mute" });
             a.AddRange(new[] { "-logFile", Path.Combine(Paths.Instance, $"client_{name}.log") });
             if (score > 0) a.Add("--hmmrevive-score=" + score);
+            if (!string.IsNullOrEmpty(cooldown)) a.Add("--hmmrevive-cooldown=" + cooldown);
             if (!string.IsNullOrEmpty(car)) a.Add("--hmmrevive-car=" + car);
             if (skin != "0") a.Add("--hmmrevive-skin=" + Regex.Replace(skin, @"[\s#""']", ""));
             if (team == "red" || team == "blue") a.Add("--hmmrevive-team=" + team);

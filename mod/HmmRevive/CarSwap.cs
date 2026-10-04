@@ -400,6 +400,7 @@ namespace HmmRevive
             {
                 if (Entry.ServerMode) ServerUpdate(hub);
                 else ClientUpdate(hub);
+                Cooldowns.Enforce(hub); // the lobby's ability cooldown (Cooldowns.cs)
             }
             catch (Exception e)
             {

@@ -215,6 +215,16 @@ static class Program
             il.Create(OpCodes.Ret),
         });
 
+        // The lobby's ability cooldowns for scripted gadgets (mod/HmmRevive/Cooldowns.cs): baseCooldown = ScriptCooldown(baseCooldown, context)
+        var cooldown = Target("HeavyMetalMachines.Combat.GadgetScript.Block.StartCooldownBlock", "GetCooldown");
+        Prologue(cooldown, il => new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Ldarg_1),
+            il.Create(OpCodes.Call, Hook("HmmRevive.Hooks", "ScriptCooldown")),
+            il.Create(OpCodes.Starg_S, cooldown.Parameters[0]),
+        });
+
         var lazy = Target("Zenject.LazyInstanceInjector", "LazyInjectAll");
         var injectCall = lazy.Body.Instructions.Single(i => (i.OpCode == OpCodes.Callvirt || i.OpCode == OpCodes.Call)
             && i.Operand is MethodReference mr && mr.Name == "Inject" && mr.DeclaringType.Name == "DiContainer");

@@ -14,6 +14,7 @@ let chatSeen = -1;     // newest lobby chat message seen on the lobby view
 let emoteSlot = -1;    // Settings: the emote slot being changed (0-3), -1 = none
 const DIFFS = () => [["auto", t("diff_auto")], ["easy", t("diff_easy")], ["medium", t("diff_medium")], ["hard", t("diff_hard")]];
 const DRAFT_TIMES = [0, 30, 45, 60, 90, 120]; // seconds per draft turn; 0 = no limit
+const COOLDOWNS = ["", "0.1", "0.25", "0.5", "1", "2", "3", "5"]; // seconds for every car's abilities; "" = the game's own
 const SCORES = () => [["1", t("score_1")], ["2", "2"], ["3", t("score_3")], ["4", "4"], ["5", "5"]];
 const RESOLUTIONS = [[1280, 720], [1600, 900], [1920, 1080], [2560, 1440], [3840, 2160]];
 
@@ -233,6 +234,7 @@ function renderLobby() {
   $("#lobby-title").textContent = t("someones_lobby", L.host || "?");
   const hostOut = L.members.some((m) => m.host && m.team === "none");
   $("#lobby-sub").textContent = (legacy ? buildName(L.build) : t("lobby_sub", arenaName(L.arena), points(L.score))) + (L.draftOn ? " · " + t("draft_title") : "")
+    + (!legacy && L.cooldown ? " · " + t("cd_short", L.cooldown) : "")
     + (hostOut ? " · " + t("host_not_playing") : "") + (amHost ? "" : " · " + S.lobbyAddress);
 
   // status line
@@ -289,6 +291,9 @@ function renderLobby() {
     const H = S.hostSetup;
     fill($("#h-arena"), C.arenas.map((a) => [String(a.id), a.name]), H.arena);
     fill($("#h-score"), SCORES(), H.score);
+    const cd = H.cooldown || "";
+    fill($("#h-cd"), COOLDOWNS.concat(COOLDOWNS.includes(cd) ? [] : [cd])
+      .map((s) => [s, s ? t("cd_seconds", s) : t("cd_off")]), cd);
     document.querySelectorAll(".steam-only").forEach((e) => (e.hidden = legacy));
     for (const team of ["blue", "red"]) {
       $(`#h-${team}-bots`).textContent = L.teams[team].bots + (H[team].bots > L.teams[team].bots ? ` (${H[team].bots})` : "");
@@ -632,11 +637,12 @@ document.addEventListener("change", async (e) => {
       const n = (team) => S.lobby.members.filter((m) => m.team === team).length;
       return act("lobby/update", { team: n("blue") <= n("red") ? "blue" : "red" });
     }
-    case "h-auto": case "h-arena": case "h-score": case "h-blue-diff": case "h-red-diff": {
+    case "h-auto": case "h-arena": case "h-score": case "h-cd": case "h-blue-diff": case "h-red-diff": {
       const H = structuredClone(S.hostSetup);
       H.autoStart = $("#h-auto").checked;
       H.arena = parseInt($("#h-arena").value, 10);
       H.score = parseInt($("#h-score").value, 10);
+      H.cooldown = $("#h-cd").value;
       H.blue.difficulty = $("#h-blue-diff").value;
       H.red.difficulty = $("#h-red-diff").value;
       return act("host/configure", H);

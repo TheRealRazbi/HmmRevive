@@ -12,6 +12,7 @@ param(
     [switch]$Windowed,
     [switch]$Fullscreen,
     [int]$Score = 0,   # must match the server's -Score
+    [string]$Cooldown = "", # must match the server's -Cooldown
     [string]$Car = "", # car name or number, e.g. -Car stingray (see "cars:" in the server log); empty = default
     [string]$Skin = "", # skin number (launcher/skins.txt, 0 = default), name or "random"; empty = default
     [string]$Team = "", # red or blue: ask the server for this team (the server honours it); empty = the server's choice
@@ -29,6 +30,7 @@ Remove-Item $log -ErrorAction SilentlyContinue
 $a = @()
 if ($Background) { $a += @("-batchmode", "--hmmrevive-mute") }
 if ($Score -gt 0) { $a += "--hmmrevive-score=$Score" }
+if ($Cooldown) { $a += "--hmmrevive-cooldown=$Cooldown" }
 if ($Car) { $a += "--hmmrevive-car=$($Car -replace '\s','')" }
 if ($Skin) { $a += "--hmmrevive-skin=$($Skin -replace '\s','')" }
 if ($Team) { $a += "--hmmrevive-team=$Team" }
