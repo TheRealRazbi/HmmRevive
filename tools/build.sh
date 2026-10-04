@@ -26,3 +26,10 @@ if [ -n "${HMM_2017_DIR:-}" ]; then
 else
     echo "(HMM_2017_DIR not set: skipped the 2017 build's mod and copy)"
 fi
+# The September 2017 build (HMM_2017SEP_DIR, experimental): same mod source compiled with Y2017SEP, copy in "$INST-2017sep".
+if [ -n "${HMM_2017SEP_DIR:-}" ]; then
+    if ! out=$(dotnet build mod/HmmRevive.Legacy -c Release -v q -nologo -p:GameManaged="$HMM_2017SEP_DIR/HMM_Data/Managed" -p:DefineConstants=Y2017SEP 2>&1); then echo "$out" | grep -E " error " | sort -u; echo "LEGACY MOD (2017sep) BUILD FAILED"; exit 1; fi
+    mkdir -p build/mod/2017sep && cp mod/HmmRevive.Legacy/bin/Release/net35/HmmReviveLegacy.dll build/mod/2017sep/
+    powershell -NoProfile -Command "\$exe = [IO.Path]::GetFullPath('$INST-2017sep\HMM.exe'); Get-Process HMM -EA SilentlyContinue | ? { \$_.Path -eq \$exe } | Stop-Process -Force; Start-Sleep -Milliseconds 700" || true
+    ./build/patcher/Patcher.exe "$HMM_2017SEP_DIR" "$INST-2017sep" build/mod
+fi

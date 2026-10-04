@@ -83,17 +83,30 @@
       <div class="team red"><div class="team-head"><h2 data-i18n="team_red"></h2><span id="switch-red"></span></div><div class="slots" id="slots-red"></div></div>
     </div>
     <div class="specs" id="specs" hidden></div>
-    <div class="lobby-bottom">
+    <div class="lobby-bottom" id="lobby-bottom">
       <div class="panel mine">
         <h2 data-i18n="you_title"></h2>
         <p class="hint" id="not-playing" data-i18n="not_playing_hint" hidden></p>
         <p class="hint" id="spectating" data-i18n="spec_hint" hidden></p>
         <p class="hint" id="drafted-car" data-i18n="drafted_car_hint" hidden></p>
-        <label class="player-only"><span data-i18n="car"></span> <select id="lobby-car"></select></label>
-        <label class="player-only"><span data-i18n="skin"></span> <select id="lobby-skin"></select></label>
+        <div class="pick-row player-only">
+          <div class="pick-fields">
+            <label><span data-i18n="car"></span> <select id="lobby-car"></select></label>
+            <label><span data-i18n="skin"></span> <select id="lobby-skin"></select></label>
+          </div>
+          <img class="skin-pic" id="lobby-skin-pic" alt="" hidden>
+        </div>
         <p class="hint" id="legacy-pick" data-i18n="legacy_pick_hint" hidden></p>
         <button class="ready big" id="ready"></button>
         <button class="ghost" id="relaunch" data-i18n="start_again" hidden></button>
+      </div>
+      <div class="panel chat">
+        <h2 data-i18n="chat_title"></h2>
+        <div class="chat-log" id="chat-log"></div>
+        <form class="row" id="chat-form">
+          <input id="chat-input" maxlength="200" data-i18n-ph="chat_ph" autocomplete="off">
+          <button type="submit" data-i18n="chat_send"></button>
+        </form>
       </div>
       <div class="panel hostbox" id="hostbox" hidden>
         <h2 data-i18n="match_settings"></h2>
@@ -112,7 +125,9 @@
           <label class="check"><input type="checkbox" id="h-spec"> <span data-i18n="spectator_seats"></span></label>
           <label class="check"><input type="checkbox" id="h-draft"> <span data-i18n="draft_option"></span></label>
           <div id="h-order-box">
-            <label><span data-i18n="draft_order"></span> <input id="h-order" spellcheck="false" autocomplete="off"></label>
+            <label><span data-i18n="draft_bans_order"></span> <input id="h-bans" class="order" spellcheck="false" autocomplete="off"></label>
+            <label><span data-i18n="draft_picks_order"></span> <input id="h-picks" class="order" spellcheck="false" autocomplete="off"></label>
+            <label><span data-i18n="draft_time"></span> <select id="h-dtime"></select></label>
             <p class="hint" data-i18n="draft_order_hint"></p>
           </div>
         </div>
@@ -134,9 +149,16 @@
         <h2 data-i18n="player"></h2>
         <label><span data-i18n="name"></span> <input id="s-name" maxlength="16" spellcheck="false" autocomplete="off"></label>
         <p class="hint" data-i18n="name_hint"></p>
-        <label><span data-i18n="car"></span> <select id="s-car"></select></label>
-        <label><span data-i18n="skin"></span> <select id="s-skin"></select></label>
+        <div class="pick-row">
+          <div class="pick-fields">
+            <label><span data-i18n="car"></span> <select id="s-car"></select></label>
+            <label><span data-i18n="skin"></span> <select id="s-skin"></select></label>
+          </div>
+          <img class="skin-pic" id="s-skin-pic" alt="" hidden>
+        </div>
         <p class="hint" data-i18n="skin_hint"></p>
+        <h2 data-i18n="emotes_title"></h2>
+        <div id="s-emotes"></div>
         <label><span data-i18n="language"></span> <select id="s-lang">
           <option value="en">English</option>
           <option value="pt">Português (Brasil)</option>

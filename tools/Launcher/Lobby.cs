@@ -28,6 +28,7 @@ namespace HmmRevive.Launcher
             public string Id, Token, Name, Team, Car = "", Skin = "0", Version;
             public bool Ready, IsHost, InMatch;
             public DateTime Seen = DateTime.UtcNow;
+            public readonly List<DateTime> Said = new List<DateTime>(); // recent chat messages (flood limit)
         }
 
         public class TeamSetup
@@ -56,11 +57,13 @@ namespace HmmRevive.Launcher
         public int Arena = 1, Score = 3;
         public bool AutoStart = true;
         public bool Spectators, DraftOn;
-        public string DraftOrder = Draft.DefaultOrder;
+        public string DraftBans = Draft.DefaultBans, DraftPicks = Draft.DefaultPicks;
+        public int DraftTime = Draft.DefaultTurnSeconds; // seconds per draft turn, 0 = no limit
         private Draft _draft; // this match's draft: running (phase "draft") or done (cars limited to each team's picks)
         private readonly Random _rng = new Random();
         public readonly Dictionary<string, TeamSetup> Teams = new Dictionary<string, TeamSetup> { ["blue"] = new TeamSetup(), ["red"] = new TeamSetup() };
         private DateTime? _countdownEnd;
+        private int _draftSecondsShown = -1; // the turn clock members last saw
         private readonly string _lobbyId = NewId(6); // tells the same lobby apart when found on several networks
         private int _matchNumber;
         private bool _matchStarted; // the server reached a match (vs. died while loading)
@@ -117,8 +120,10 @@ namespace HmmRevive.Launcher
             AutoStart = h.Bool("autoStart", AutoStart);
             Spectators = h.Bool("spectators", Spectators);
             DraftOn = h.Bool("draft", DraftOn);
-            string order = h.Str("draftOrder");
-            if (order != null && Draft.Parse(order) != null) DraftOrder = string.Join(" ", order.ToUpperInvariant().Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries));
+            // (1.3 preview had one "draftOrder" for bans and picks; its default was wrong, so it isn't read.)
+            DraftBans = Draft.Clean(h.Str("draftBans")) ?? DraftBans;
+            DraftPicks = Draft.Clean(h.Str("draftPicks")) ?? DraftPicks;
+            DraftTime = Math.Max(0, Math.Min(600, h.Int("draftTime", DraftTime)));
             foreach (string t in new[] { "blue", "red" })
             {
                 var d = h.Obj(t);
@@ -138,7 +143,8 @@ namespace HmmRevive.Launcher
 
         public Dictionary<string, object> SetupJson()
         {
-            var d = new Dictionary<string, object> { ["arena"] = Arena, ["score"] = Score, ["autoStart"] = AutoStart, ["spectators"] = Spectators, ["draft"] = DraftOn, ["draftOrder"] = DraftOrder };
+            var d = new Dictionary<string, object> { ["arena"] = Arena, ["score"] = Score, ["autoStart"] = AutoStart, ["spectators"] = Spectators, ["draft"] = DraftOn,
+                ["draftBans"] = DraftBans, ["draftPicks"] = DraftPicks, ["draftTime"] = DraftTime };
             foreach (var t in Teams)
                 d[t.Key] = new Dictionary<string, object> { ["bots"] = t.Value.Bots, ["difficulty"] = t.Value.Difficulty, ["cars"] = t.Value.Cars.ToArray() };
             return d;
@@ -162,7 +168,7 @@ namespace HmmRevive.Launcher
         }
 
         // What a running or finished draft depends on: changing it means a new draft.
-        private string DraftShape() => $"{DraftEnabled} {DraftOrder} {BotsOn("blue")} {BotsOn("red")}";
+        private string DraftShape() => $"{DraftEnabled} {DraftBans} {DraftPicks} {BotsOn("blue")} {BotsOn("red")}";
 
         // ---- members ----
 
@@ -170,7 +176,16 @@ namespace HmmRevive.Launcher
         private IEnumerable<Member> Players => _members.Where(m => m.Team == "blue" || m.Team == "red");
         private bool SpectatorsOn => Spectators && !Builds.IsLegacy(Build);
         private bool DraftEnabled => DraftOn && !Builds.IsLegacy(Build);
-        private bool SpectatorFree => SpectatorsOn && Humans(Spectator) < SpectatorSlots;
+        private bool SpectatorFree => SpectatorsOn && Humans(Spectator) + Freeing < SpectatorSlots;
+
+        // A spectator who stops watching a running match keeps the game's narrator slot until the server drops the
+        // connection (SfNetwork ConnectionTimeout, 10 s), so that lobby seat stays taken a little longer.
+        private readonly List<DateTime> _seatsFreeing = new List<DateTime>();
+        private int Freeing => _seatsFreeing.Count(t => t > DateTime.UtcNow);
+        private void SeatLeft(Member m)
+        {
+            if (m.Team == Spectator && m.InMatch && (Phase == "starting" || Phase == "playing")) _seatsFreeing.Add(DateTime.UtcNow.AddSeconds(15));
+        }
         private bool Drafting => _draft != null; // running or done: the teams are locked
         private int BotsOn(string team) => Math.Max(0, Math.Min(Teams[team].Bots, TeamSize - Humans(team)));
 
@@ -202,11 +217,13 @@ namespace HmmRevive.Launcher
                     if (!SpectatorFree) { error = Drafting ? "This lobby is drafting and the spectator seats are taken. Join after the match." : "The lobby is full (8 players)."; return null; }
                     team = Spectator;
                 }
+                else if (Phase != "lobby" && SpectatorFree) team = Spectator; // a match is running: watch it (a team seat is free again after it)
                 var m = new Member { Id = NewId(4), Token = NewId(16), Name = name, Team = team, Version = version, IsHost = isHost };
                 if (old != null && old.Team == team) { m.Car = old.Car; m.Skin = old.Skin; m.InMatch = old.InMatch; }
                 if (team == Spectator && Phase == "playing") m.InMatch = true; // spectators can join a running match
                 _members.Add(m);
                 Message = $"{name} joined.";
+                ChatAdd(name, team, "joined", true);
                 Changed();
                 return m;
             }
@@ -224,14 +241,16 @@ namespace HmmRevive.Launcher
                 {
                     // Players' seats are locked from the draft to the end of the match; watchers may come and go.
                     bool player = m.Team == "red" || m.Team == "blue";
-                    if (player && (Phase != "lobby" || Drafting)) return Drafting && Phase == "lobby" ? "The teams are locked after the draft. The host can reset the draft." : "Teams are locked during a match.";
-                    if (team == Spectator && !SpectatorFree) return SpectatorsOn ? "The spectator seats are taken." : "This lobby has no spectator seats.";
+                    if (player && (m.InMatch || Drafting)) return Drafting && Phase == "lobby" ? "The teams are locked after the draft. The host can reset the draft." : "Teams are locked during a match.";
+                    if (team == Spectator && !SpectatorFree)
+                        return !SpectatorsOn ? "This lobby has no spectator seats." : Freeing > 0 ? "A spectator just left: that seat is free again in a few seconds." : "The spectator seats are taken.";
                     if (team == "red" || team == "blue")
                     {
                         if (Phase != "lobby") return "Teams are locked during a match.";
                         if (Drafting) return "The teams are locked after the draft. The host can reset the draft.";
                         if (Humans(team) >= TeamSize) return "That team is full.";
                     }
+                    SeatLeft(m);
                     m.Team = team;
                     m.Ready = false;
                     m.InMatch = team == Spectator && Phase == "playing";
@@ -264,7 +283,9 @@ namespace HmmRevive.Launcher
                 Member m = _members.FirstOrDefault(x => x.Token == token);
                 if (m == null) return;
                 _members.Remove(m);
+                SeatLeft(m);
                 Message = $"{m.Name} left.";
+                ChatAdd(m.Name, m.Team, "left", true);
                 Changed();
             }
         }
@@ -276,20 +297,88 @@ namespace HmmRevive.Launcher
                 Member m = _members.FirstOrDefault(x => x.Id == id && !x.IsHost);
                 if (m == null) return;
                 _members.Remove(m);
+                SeatLeft(m);
                 Message = $"{m.Name} was removed by the host.";
+                ChatAdd(m.Name, m.Team, "removed", true);
                 Changed();
             }
         }
 
-        public void MoveMember(string id, string team)
+        /// <summary>Host moves a player to the other team's free seat.</summary>
+        public string MoveMember(string id, string team)
         {
             lock (_gate)
             {
                 Member m = _members.FirstOrDefault(x => x.Id == id);
-                if (m == null || Phase != "lobby" || Drafting || (team != "red" && team != "blue") || m.Team == team || Humans(team) >= TeamSize) return;
+                if (m == null) return "That player isn't in the lobby anymore.";
+                string why = TeamsLockedWhy();
+                if (why != null) return why;
+                if ((team != "red" && team != "blue") || (m.Team != "red" && m.Team != "blue") || m.Team == team) return null;
+                if (Humans(team) >= TeamSize) return "That team is full.";
                 m.Team = team;
                 m.Ready = false;
+                Message = $"The host moved {m.Name} to the {(team == "blue" ? "Blue" : "Red")} team.";
                 Changed();
+                return null;
+            }
+        }
+
+        /// <summary>Host swaps two players of different teams, even when both teams are full (to balance them by skill).</summary>
+        public string SwapMembers(string idA, string idB)
+        {
+            lock (_gate)
+            {
+                Member a = _members.FirstOrDefault(x => x.Id == idA), b = _members.FirstOrDefault(x => x.Id == idB);
+                if (a == null || b == null) return "That player isn't in the lobby anymore.";
+                string why = TeamsLockedWhy();
+                if (why != null) return why;
+                bool player(Member x) => x.Team == "red" || x.Team == "blue";
+                if (!player(a) || !player(b) || a.Team == b.Team) return "Pick two players of different teams.";
+                (a.Team, b.Team) = (b.Team, a.Team);
+                a.Ready = b.Ready = false;
+                Message = $"The host swapped {a.Name} and {b.Name}.";
+                Changed();
+                return null;
+            }
+        }
+
+        private string TeamsLockedWhy()
+        {
+            if (Drafting) return "The teams are locked after the draft. The host can reset the draft.";
+            return Phase != "lobby" ? "Teams are locked during a match." : null;
+        }
+
+        // ---- chat ----
+
+        private class ChatLine { public int Id; public string Name, Team, Text; public bool System; }
+        private readonly List<ChatLine> _chat = new List<ChatLine>();
+        private int _chatId;
+        private const int ChatKept = 60, ChatMaxLength = 200;
+
+        private void ChatAdd(string name, string team, string text, bool system)
+        {
+            _chat.Add(new ChatLine { Id = ++_chatId, Name = name, Team = team, Text = text, System = system });
+            if (_chat.Count > ChatKept) _chat.RemoveAt(0);
+        }
+
+        /// <summary>A member's chat message, seen by everyone in the lobby (also during the draft and the match).</summary>
+        public string Say(string token, string text)
+        {
+            lock (_gate)
+            {
+                Member m = _members.FirstOrDefault(x => x.Token == token);
+                if (m == null) return "You're not in this lobby anymore.";
+                m.Seen = DateTime.UtcNow;
+                text = new string((text ?? "").Where(ch => !char.IsControl(ch)).ToArray()).Trim();
+                if (text.Length == 0) return null;
+                if (text.Length > ChatMaxLength) text = text.Substring(0, ChatMaxLength);
+                DateTime now = DateTime.UtcNow;
+                m.Said.RemoveAll(t => (now - t).TotalSeconds > 10);
+                if (m.Said.Count >= 6) return "Slow down: wait a few seconds before the next message.";
+                m.Said.Add(now);
+                ChatAdd(m.Name, m.Team, text, false);
+                Changed();
+                return null;
             }
         }
 
@@ -329,7 +418,7 @@ namespace HmmRevive.Launcher
             _countdownEnd = null;
             var slots = new Dictionary<string, int> { ["blue"] = Humans("blue") + BotsOn("blue"), ["red"] = Humans("red") + BotsOn("red") };
             string first = _rng.Next(2) == 0 ? "blue" : "red";
-            _draft = new Draft(DraftOrder, first, slots, Catalog.Cars.Select(c => c.Id.ToString()));
+            _draft = new Draft(DraftBans, DraftPicks, first, slots, Catalog.Cars.Select(c => c.Id.ToString()), DraftTime);
             Phase = "draft";
             foreach (Member m in Players) m.Ready = false;
             Message = $"Draft started: the {(first == "blue" ? "Blue" : "Red")} team goes first.";
@@ -464,10 +553,28 @@ namespace HmmRevive.Launcher
                 lock (_gate)
                 {
                     DateTime now = DateTime.UtcNow;
-                    foreach (Member m in _members.Where(x => !x.IsHost && !x.InMatch && (now - x.Seen).TotalSeconds > 20).ToList())
+                    // Players in a match keep their seat for a reconnect; a watching spectator whose launcher is gone for a
+                    // minute gives the seat to whoever wants it (that launcher closes its game when it sees it's out).
+                    foreach (Member m in _members.Where(x => !x.IsHost && (now - x.Seen).TotalSeconds > (!x.InMatch ? 20 : x.Team == Spectator ? 60 : double.MaxValue)).ToList())
                     {
                         _members.Remove(m);
+                        SeatLeft(m);
                         Message = $"{m.Name} lost connection to the lobby.";
+                        ChatAdd(m.Name, m.Team, "lost", true);
+                        Changed();
+                    }
+                    if (_seatsFreeing.RemoveAll(t => t <= now) > 0) Changed(); // a spectator seat is free again
+                    if (Phase == "draft" && _draft.TurnEnds != null)
+                    {
+                        int left = (int)Math.Ceiling((_draft.TurnEnds.Value - now).TotalSeconds);
+                        if (left != _draftSecondsShown) { _draftSecondsShown = left; Changed(); } // members' turn clocks tick
+                    }
+                    if (Phase == "draft" && _draft.TimedOut)
+                    {
+                        string team = _draft.Current.Team == "blue" ? "Blue" : "Red";
+                        _draft.Fill(_rng);
+                        Message = $"Time's up: the {team} team's turn was completed at random.";
+                        DraftAdvance();
                         Changed();
                     }
                     if (Phase == "lobby")
@@ -491,6 +598,7 @@ namespace HmmRevive.Launcher
                             Message = _matchStarted ? "Match over. Get ready for the next one!" : "The match server stopped before the match began.";
                         foreach (Member m in _members) { m.InMatch = false; m.Ready = false; m.Seen = now; }
                         _draft = null; // every match gets its own draft
+                        _seatsFreeing.Clear();
                         Changed();
                     }
                 }
@@ -538,8 +646,11 @@ namespace HmmRevive.Launcher
                     ["score"] = Score,
                     ["autoStart"] = AutoStart,
                     ["spectators"] = SpectatorsOn,
+                    ["spectatorSeatsFreeing"] = Freeing,
                     ["draftOn"] = DraftEnabled,
-                    ["draftOrder"] = DraftOrder,
+                    ["draftBans"] = DraftBans,
+                    ["draftPicks"] = DraftPicks,
+                    ["draftTime"] = DraftTime,
                     ["draft"] = _draft?.Json(me?.Team),
                     ["nextIsDraft"] = NeedsDraft,
                     ["countdown"] = _countdownEnd == null ? -1 : Math.Max(0, (int)Math.Ceiling((_countdownEnd.Value - DateTime.UtcNow).TotalSeconds)),
@@ -548,6 +659,9 @@ namespace HmmRevive.Launcher
                     ["match"] = _matchNumber,
                     ["teams"] = teams,
                     ["me"] = me?.Id,
+                    // System lines carry a key (joined, left, removed, lost) that each page translates.
+                    ["chat"] = _chat.Select(c => new Dictionary<string, object>
+                        { ["id"] = c.Id, ["name"] = c.Name, ["team"] = c.Team, ["text"] = c.Text, ["sys"] = c.System }).ToArray(),
                     ["members"] = _members.Select(m => new Dictionary<string, object>
                     {
                         ["id"] = m.Id, ["name"] = m.Name, ["team"] = m.Team, ["car"] = m.Car, ["skin"] = m.Skin,
@@ -570,7 +684,7 @@ namespace HmmRevive.Launcher
                     ["build"] = Build,
                     ["phase"] = Phase,
                     ["players"] = Players.Count(),
-                    ["spectatorSeats"] = SpectatorsOn ? SpectatorSlots - Humans(Spectator) : 0,
+                    ["spectatorSeats"] = SpectatorsOn ? Math.Max(0, SpectatorSlots - Humans(Spectator) - Freeing) : 0,
                     ["draft"] = DraftEnabled,
                     ["arena"] = Arena,
                     ["bots"] = BotsOn("blue") + BotsOn("red"),
@@ -612,6 +726,13 @@ namespace HmmRevive.Launcher
                     if (r.Method != "POST") return null;
                     var d = Js.Read(r.Body);
                     string error = DraftAct(d.Str("token"), d.Str("action"), d.Str("car"));
+                    return error == null ? Response.Json(new Dictionary<string, object> { ["ok"] = true }) : Response.Error(error);
+                }
+                case "/lobby/chat":
+                {
+                    if (r.Method != "POST") return null;
+                    var d = Js.Read(r.Body);
+                    string error = Say(d.Str("token"), d.Str("text"));
                     return error == null ? Response.Json(new Dictionary<string, object> { ["ok"] = true }) : Response.Error(error);
                 }
                 case "/lobby/leave":

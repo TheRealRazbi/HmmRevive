@@ -20,6 +20,13 @@ if [ -n "${HMM_2017_DIR:-}" ]; then
 else
     echo "WARNING: HMM_2017_DIR not set, the kit won't support the 2017 game build"
 fi
+# The September 2017 build's mod (mod/2017sep/): same source with Y2017SEP, against HMM_2017SEP_DIR.
+if [ -n "${HMM_2017SEP_DIR:-}" ]; then
+    if ! out=$(dotnet build mod/HmmRevive.Legacy -c Release -v q -nologo -p:GameManaged="$HMM_2017SEP_DIR/HMM_Data/Managed" -p:DefineConstants=Y2017SEP 2>&1); then echo "$out" | grep -E " error " | sort -u; echo "LEGACY MOD (2017sep) BUILD FAILED"; exit 1; fi
+    mkdir -p "$KIT/mod/2017sep" && cp mod/HmmRevive.Legacy/bin/Release/net35/HmmReviveLegacy.dll "$KIT/mod/2017sep/"
+else
+    echo "WARNING: HMM_2017SEP_DIR not set, the kit won't support the September 2017 game build"
+fi
 if ! out=$(dotnet publish tools/Patcher -c Release -r win-x64 --self-contained -p:PublishSingleFile=true \
     -p:EnableCompressionInSingleFile=true -o build/patcher-kit -v q -nologo 2>&1); then echo "$out" | grep -E " error " | sort -u; echo "PATCHER PUBLISH FAILED"; exit 1; fi
 cp build/patcher-kit/Patcher.exe "$KIT/"

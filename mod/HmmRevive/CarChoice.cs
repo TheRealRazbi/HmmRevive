@@ -30,14 +30,13 @@ namespace HmmRevive
         private static bool _listed;
 
         // Client, AuthenticationSerializer.SerializeAuthenticationRequest: transforms the login name that is written.
-        // "name", "name#car", "name#car#skin" or "name#car#skin#team" (car and skin may be empty).
+        // "name", "name#car", "name#car#skin", "name#car#skin#team" or "name#car#skin#team#emotes" (any may be empty).
         public static string LoginName(string name)
         {
-            if (Entry.Car == null && Entry.Skin == null && Entry.Team == null) return name;
-            string login = name + Separator + Entry.Car;
-            if (Entry.Skin != null || Entry.Team != null) login += Separator + Entry.Skin;
-            if (Entry.Team != null) login += Separator + Entry.Team;
-            return login;
+            string[] fields = { Entry.Car, Entry.Skin, Entry.Team, Emotes.LoginField };
+            int last = Array.FindLastIndex(fields, f => f != null);
+            if (last < 0) return name;
+            return name + Separator + string.Join(Separator.ToString(), fields.Take(last + 1).Select(f => f ?? "").ToArray());
         }
 
         // Client, start of UserInfo.InternalConnectToServer(narrator, ...): narrator = Narrator(narrator). A spectator
@@ -46,6 +45,20 @@ namespace HmmRevive
         {
             if (Entry.Spectate && !narrator) Log.Info("connecting as a spectator (narrator)");
             return narrator || Entry.Spectate;
+        }
+
+        // Server, start of AuthenticationManager.FakeNarrator: the game allows 2 narrators by counting logins
+        // (_narratorCount, addresses 100 + count) and never counts down, though it drops a narrator who disconnects. So
+        // after two logins nobody could watch, not even a spectator coming back. Count the narrators still there instead,
+        // and hand out the lowest free address. (A narrator still listed under the same name reconnects before this check.)
+        public static void FreeNarratorSeats(object authManager)
+        {
+            List<PlayerData> narrators = GameHubBehaviour.Hub.Players.Narrators;
+            int free = 0;
+            while (free < 2 && narrators.Exists(n => n.PlayerAddress == 100 + free)) free++;
+            FieldInfo count = authManager.GetType().GetField("_narratorCount", BindingFlags.Instance | BindingFlags.NonPublic);
+            if ((int)count.GetValue(authManager) != free) Log.Info($"spectator seats: {narrators.Count} watching, next seat {(free < 2 ? (100 + free).ToString() : "none")}");
+            count.SetValue(authManager, free);
         }
 
         // Server, start of AuthenticationManager.FakeAuthentication: username = TakeFromLogin(username).
@@ -58,6 +71,7 @@ namespace HmmRevive
             if (parts[0].Length > 0) ChoiceByName[name] = parts[0];
             if (parts.Length > 1 && parts[1].Length > 0) SkinByName[name] = parts[1];
             if (parts.Length > 2 && (parts[2] == "red" || parts[2] == "blue")) RedByName[name] = parts[2] == "red";
+            if (parts.Length > 3 && parts[3].Length > 0) Emotes.Wish(name, parts[3]);
             Log.Info($"player {name} wants car '{parts[0]}' skin '{(parts.Length > 1 ? parts[1] : "")}' team '{(parts.Length > 2 ? parts[2] : "")}'");
             return name;
         }
@@ -94,6 +108,7 @@ namespace HmmRevive
             }
             if (player.IsBot) return BotCar(player, characters, fallback);
             Log.Info($"player {player.Name} is {player.Team} #{player.TeamSlot + 1}");
+            Emotes.ApplyToPlayer(player);
             string want;
             if (!ChoiceByName.TryGetValue(player.Name, out want)) return fallback;
             int id = Resolve(want, characters);

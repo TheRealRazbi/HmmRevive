@@ -481,7 +481,7 @@ namespace HmmRevive
 
         private static void ClientUpdate(HMMHub hub)
         {
-            if (Entry.AutoChat != null)
+            if (Entry.AutoChat != null && hub.Match?.State == MatchData.MatchState.MatchStarted)
             {
                 if (_autoChatAt < 0f) _autoChatAt = Time.unscaledTime + 3f;
                 else if (Time.unscaledTime >= _autoChatAt)

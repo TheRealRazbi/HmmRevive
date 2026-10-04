@@ -49,8 +49,9 @@ HOST (one person, on a PC that stays on during the match)
 
 Tournaments (in the lobby's match settings, host only)
   - "Draft before each match": starting the match first starts a draft. A random team goes first, then the teams
-    take turns banning cars and then picking them (order A1 B2 A2 B1 B1 A1 by default, A = the team that goes first;
-    the host can change it). After the draft each player chooses one of the team's cars and clicks Ready again.
+    take turns banning cars and then picking them (by default bans A1 B1, picks A1 B2 A2 B1 A1 B1; A = the team that
+    goes first; the host can change both). Each turn has 60 seconds by default; when time runs out the turn is
+    completed at random. After the draft each player chooses one of the team's cars and clicks Ready again.
   - "2 spectator seats": up to two people watch the match with the game's spectator camera, without a car
     (click "Watch" in the lobby). They can join a match that is already running.
 

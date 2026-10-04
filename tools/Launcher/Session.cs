@@ -154,6 +154,13 @@ namespace HmmRevive.Launcher
             catch (Exception e) { return e.Message; }
         }
 
+        /// <summary>A lobby chat message.</summary>
+        public string Say(string text)
+        {
+            try { Post($"http://{Address}/lobby/chat", new Dictionary<string, object> { ["token"] = _token, ["text"] = text ?? "" }); return null; }
+            catch (Exception e) { return e.Message; }
+        }
+
         /// <summary>Start our game again for the running match (it crashed or was closed); the server takes us back by name.</summary>
         public void Relaunch()
         {
@@ -164,6 +171,9 @@ namespace HmmRevive.Launcher
         public void Leave()
         {
             _closed = true;
+            // A spectator who leaves gives the seat back, and the game only has two: stop watching too. (A player who
+            // leaves the lobby keeps playing the running match.)
+            if (Me(Lobby)?.Str("team") == HmmRevive.Launcher.Lobby.Spectator) Game.StopClient();
             try { Post($"http://{Address}/lobby/leave", new Dictionary<string, object> { ["token"] = _token }, 2000); } catch { }
         }
 
@@ -179,6 +189,7 @@ namespace HmmRevive.Launcher
                     since = d.Int("rev");
                     if (d.Str("me") == null)
                     {
+                        if (Me(Lobby)?.Str("team") == HmmRevive.Launcher.Lobby.Spectator) Game.StopClient(); // the seat is someone else's now
                         Error = "You were removed from the lobby.";
                         _closed = true;
                         break;

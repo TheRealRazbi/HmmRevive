@@ -50,8 +50,9 @@ HOST (uma pessoa, num PC que fica ligado durante a partida)
 
 Torneios (nas configurações da partida, só o host)
   - "Draft antes de cada partida": começar a partida primeiro começa um draft. Um time sorteado começa, e os times
-    se revezam banindo carros e depois escolhendo (ordem A1 B2 A2 B1 B1 A1 por padrão, A = o time que começa; o host
-    pode mudar). Depois do draft cada jogador escolhe um dos carros do time e clica em Pronto de novo.
+    se revezam banindo carros e depois escolhendo (por padrão banimentos A1 B1, escolhas A1 B2 A2 B1 A1 B1; A = o time
+    que começa; o host pode mudar as duas). Cada turno tem 60 segundos por padrão; quando o tempo acaba o turno é
+    completado ao acaso. Depois do draft cada jogador escolhe um dos carros do time e clica em Pronto de novo.
   - "2 vagas de espectador": até duas pessoas assistem à partida com a câmera de espectador do jogo, sem carro
     (clique em "Assistir" na sala). Elas podem entrar numa partida que já está rolando.
 

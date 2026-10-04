@@ -141,6 +141,12 @@ static class Program
             il.Create(OpCodes.Call, Hook("HmmRevive.CarChoice", "ChooseTeam")),
         });
 
+        Prologue(Target("Pocketverse.AuthenticationManager", "FakeNarrator"), il => new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Call, Hook("HmmRevive.CarChoice", "FreeNarratorSeats")),
+        });
+
         var connect = Target("HeavyMetalMachines.UserInfo", "InternalConnectToServer");
         Prologue(connect, il => new[]
         {
@@ -187,6 +193,14 @@ static class Program
         Console.WriteLine($"  redirect -> LoadingState::LoadAssetsAsync CarPreCache x{preCaches} -> CarSwap.CarPreCache");
         SkipIf(Target("HeavyMetalMachines.HMMChat.ChatService", "ReceiveMessage"), Hook("HmmRevive.CarSwap", "ServerChat"), null, 0, 2);
         SkipIf(Target("HeavyMetalMachines.HMMChat.ChatService", "ClientReceiveMessage"), Hook("HmmRevive.CarSwap", "ClientChat"), null, 0, 2);
+
+        // Spectators may chat (Hooks.SpectatorChat): the game only allows it in custom matches. Client: the "is spectating"
+        // check in ClientSendMessage; server: IsValidChatSender drops narrators' messages.
+        var clientSend = Target("HeavyMetalMachines.HMMChat.ChatService", "ClientSendMessage");
+        var spectating = clientSend.Body.Instructions.Single(i => i.Operand is MethodReference mr && mr.Name == "get_IsSpectating");
+        spectating.Operand = Hook("HmmRevive.Hooks", "SpectatorChatBlocked");
+        Console.WriteLine("  redirect -> ChatService::ClientSendMessage IsSpectating -> SpectatorChatBlocked");
+        SkipIf(Target("HeavyMetalMachines.HMMChat.ChatService", "IsValidChatSender"), Hook("HmmRevive.Hooks", "AnyoneMayChat"), OpCodes.Ldc_I4_1);
 
         // Bot difficulty per team from the launcher (Hooks.BotDifficulty): if (HasBotDifficulty(team)) return BotDifficulty(team);
         var getDiff = Target("HeavyMetalMachines.BotAI.GetBotDifficulty", "Get");

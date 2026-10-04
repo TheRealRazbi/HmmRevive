@@ -17,6 +17,8 @@ namespace HmmRevive.Legacy
         /// <summary>Which old build this DLL was compiled for (the patcher checks it against the game copy).</summary>
 #if Y2016
         public const string Build = "2016";
+#elif Y2017SEP
+        public const string Build = "2017sep";
 #else
         public const string Build = "2017";
 #endif
@@ -25,6 +27,9 @@ namespace HmmRevive.Legacy
 
         /// <summary>No audio output (FMOD NOSOUND): the server, and background test clients (--hmmrevive-mute).</summary>
         public static bool Mute { get; private set; }
+
+        /// <summary>Client test aid (--hmmrevive-shots=N): N off-screen pictures of what the game shows, one every 8 s. See Shots.</summary>
+        public static int Shots { get; private set; }
 
         /// <summary>Client: join [Server] IP/Port from the main menu by itself (--hmmrevive-connect).</summary>
         public static bool Connect { get; private set; }
@@ -47,7 +52,7 @@ namespace HmmRevive.Legacy
         /// <summary>Server: value overrides file (--hmmrevive-balance=FILE|off). Default: balance-&lt;build&gt;.txt next to this DLL.</summary>
         public static string BalanceFile { get; private set; }
 
-#if !Y2016
+#if !Y2016 && !Y2017SEP
         /// <summary>Server: bot AI level per team (--hmmrevive-difficulty-red=easy|medium|hard, same for -blue).
         /// Invalid = the game's own choice (other team's MMR).</summary>
         public static HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty RedBotDifficulty { get; private set; }
@@ -73,7 +78,7 @@ namespace HmmRevive.Legacy
             return v != null && float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out f) ? f : def;
         }
 
-#if !Y2016
+#if !Y2016 && !Y2017SEP
         private static HeavyMetalMachines.BotAI.BotAIGoal.BotDifficulty Difficulty(string v)
         {
             switch ((v ?? "").ToLowerInvariant())
@@ -94,6 +99,7 @@ namespace HmmRevive.Legacy
             ServerMode = Flag(args, "--hmmrevive-server");
             Mute = ServerMode || Flag(args, "--hmmrevive-mute");
             Connect = Flag(args, "--hmmrevive-connect");
+            Shots = (int)Seconds(Arg(args, "--hmmrevive-shots="), 0);
             Team = (Arg(args, "--hmmrevive-team=") ?? "").ToLowerInvariant();
             if (Team != "red" && Team != "blue") Team = null;
             EndQuitDelay = Seconds(Arg(args, "--hmmrevive-end-quit="), EndQuitDelay);
@@ -102,7 +108,7 @@ namespace HmmRevive.Legacy
             BalanceFile = Arg(args, "--hmmrevive-balance=");
             if (BalanceFile == null) BalanceFile = Path.Combine(Path.GetDirectoryName(typeof(Entry).Assembly.Location) ?? ".", "balance-" + Build + ".txt");
             else if (BalanceFile.Equals("off", StringComparison.OrdinalIgnoreCase)) BalanceFile = null;
-#if !Y2016
+#if !Y2016 && !Y2017SEP
             RedBotDifficulty = Difficulty(Arg(args, "--hmmrevive-difficulty-red="));
             BluBotDifficulty = Difficulty(Arg(args, "--hmmrevive-difficulty-blue="));
 #endif
@@ -121,7 +127,7 @@ namespace HmmRevive.Legacy
             HideOwnWindows();
             Log.Info("HmmRevive init. Version=" + Version + " Build=" + Build + " ServerMode=" + ServerMode + " Mute=" + Mute
                      + " Connect=" + Connect + " Team=" + Team + " EndQuit=" + EndQuitDelay + "s ScoreTarget=" + ScoreTarget
-#if !Y2016
+#if !Y2016 && !Y2017SEP
                      + " Bots Red=" + RedBotDifficulty + " Blue=" + BluBotDifficulty
 #endif
                      + " Unity=" + Application.unityVersion + " args=" + string.Join(" ", args));

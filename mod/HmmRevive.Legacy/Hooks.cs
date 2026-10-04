@@ -40,6 +40,19 @@ namespace HmmRevive.Legacy
             catch (Exception e) { Log.Error("HubStart failed: " + e); }
         }
 
+        // Start of NativePlugins.LateUpdate: Hoplon's native particle renderer is Direct3D 9 only (it crashes on 11).
+        private static int _nativeOff = -1;
+        public static bool NativeRenderOff()
+        {
+            if (_nativeOff < 0)
+            {
+                string api = SystemInfo.graphicsDeviceVersion ?? "";
+                _nativeOff = api.StartsWith("Direct3D 9") || api.Length == 0 ? 0 : 1;
+                Log.Info("graphics: " + api + (_nativeOff == 1 ? " (native particle renderer off: it only supports Direct3D 9)" : ""));
+            }
+            return _nativeOff == 1;
+        }
+
         // Start of Pocketverse.GameState.EnableState: unbuffered state trace, plus what each role does on a state.
         public static void StateEnabled(GameState state)
         {
@@ -110,7 +123,7 @@ namespace HmmRevive.Legacy
             return name;
         }
 
-#if !Y2016
+#if !Y2016 && !Y2017SEP
         // ---- bot difficulty per team: start of MatchPlayers.GetBotDifficulty(team) ----
         // if (HasBotDifficulty(team)) return BotDifficulty(team);  The game picks it from the other team's MMR, which is
         // a fixed config value without Swordfish.

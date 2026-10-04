@@ -13,6 +13,7 @@ static class Builds
     static readonly Dictionary<string, string> Known = new()
     {
         ["0c5527141b81820e"] = "2017",
+        ["6b253add011d2318"] = "2017sep", // September 2017 (experimental)
         ["1c5bd4c1219a9229"] = Unsupported, // 2016: planned
     };
 
@@ -203,6 +204,17 @@ static class Legacy
             il.Create(OpCodes.Call, Hook("TakeTeam")),
             il.Create(OpCodes.Starg_S, fake.Parameters[0]),
         });
+
+        // Hoplon's native particle renderer (NativeRendering.dll) only knows Direct3D 9 and crashes in its per-frame update
+        // on anything else (tried -force-d3d11 / -force-opengl against the untextured cars: no crash with this, but the
+        // game's shaders are Direct3D 9 only, so everything turns magenta). Also logs the graphics API.
+        // if (NativeRenderOff()) return;
+        var late = module.GetType("NativePlugins")?.Methods.SingleOrDefault(m => m.Name == "LateUpdate" && m.HasBody);
+        if (late != null)
+        {
+            var lateBody = late.Body.Instructions[0];
+            Prologue(late, il => new[] { il.Create(OpCodes.Call, Hook("NativeRenderOff")), il.Create(OpCodes.Brfalse, lateBody), il.Create(OpCodes.Ret) });
+        }
 
         // Bot level per team (2017): if (HasBotDifficulty(team)) return BotDifficulty(team);
         var getDiff = module.GetType("HeavyMetalMachines.MatchPlayers")?.Methods.SingleOrDefault(m => m.Name == "GetBotDifficulty" && m.HasBody);

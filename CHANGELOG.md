@@ -2,14 +2,46 @@
 
 Newest first. The version is shown on the first line of every kit window (setup, play, host).
 
-## 1.3 (preview, 2026-09-30)
+## 1.4 (preview, 2026-10-04)
+
+- **The host can swap players between teams**, also when both teams are full, to balance the teams by skill (like in
+  the original game's custom matches). In the lobby, the host clicks "Swap…" on a player, then "⇄ Swap" on a player
+  of the other team, or "Move here" on a free seat of the other team. Everyone swapped clicks Ready again.
+- **Lobby chat:** a chat box in the lobby page, for everyone in the lobby (also during the draft and the match). It
+  also shows who joined and left.
+- **Spectators can chat in the match.** Their messages go to everyone, tagged [Spectator] (the game only allowed this
+  in its custom matches).
+- **Emotes are back.** In a match, hold the emote key to open the emote wheel and show an emote above your car, like
+  before the servers closed. Pick your four emotes in Settings > Emotes (119 to choose from).
+- **Skin pictures:** a picture of the skin next to the car and skin choice (lobby and Settings), so you can tell the
+  skins apart. The first time the launcher starts after setup, it makes the pictures from your own game files (a hidden
+  game window for a few seconds), so they always match your game.
+- **Heavy Metal Machines from September 2017 (experimental):** a second old version the launcher can set up and run,
+  same rules as the November 2017 one (game's own pick screen, one arena, no draft or spectators). Add it under
+  Settings > Game copies. Not ready for real matches yet.
+- Everyone in a lobby needs HMM Revive 1.4.
+
+## 1.3 (2026-10-03)
+
+New since the 1.3 preview:
+
+- **Draft order fixed.** Bans and picks now have their own order. By default team A bans 1 car, then team B bans 1;
+  then the picks go `A1 B2 A2 B1 A1 B1` (A picks 1, B picks 2, A picks 2, then one car at a time). A is the team that
+  goes first. The host can still change both orders.
+- **Time limit per draft turn:** 60 seconds by default, like the game's own pick screen. When the time runs out, the
+  turn is completed at random (cars the team already selected are kept). The host can pick 30-120 seconds or no limit.
+- **Spectators can come back.** A spectator who closed their game, or left the lobby, couldn't watch the running
+  match again, even with a free seat. Now they can: click "Start my game again", or join the lobby again.
+  Leaving the lobby as a spectator also closes your game, and a few seconds later your seat is free for someone else.
+  A player who joins while a match is running takes a free spectator seat and watches it.
+
+The rest of 1.3 (from the preview):
 
 For tournaments:
 
 - **Draft:** the host can turn on "Draft before each match" in the lobby's match settings. Starting the match then
-  starts the draft first. A random team goes first, and the teams take turns banning cars, then picking them. The
-  default order is `A1 B2 A2 B1 B1 A1`: team A bans 1 car, then B bans 2, and so on. A is the team that goes first.
-  The same order is used for the picks. The host can change the order. Each team picks as many cars as it has players and bots.
+  starts the draft first. A random team goes first, and the teams take turns banning cars, then picking them (order
+  above). Each team picks as many cars as it has players and bots.
   - Any player of the team whose turn it is clicks cars on the draft board, then "Lock in". Teammates see the
     selection as it happens; the other team only sees it once it's locked in.
   - Banned cars and the other team's picks can't be picked.

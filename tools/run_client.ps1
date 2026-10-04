@@ -18,7 +18,10 @@ param(
     [switch]$Spectate,  # watch as one of the game's spectators (narrators, 2 per match), no car
     [string]$Instance = "instance", # game instance folder in the repo (e.g. instance-dev built with HMM_INSTANCE=instance-dev)
     [int]$Shots = 0,        # tests: N off-screen pictures of the match (hmmrevive-shot-<pid>-<n>.png next to HMM.exe)
-    [string]$AutoChat = ""  # tests: chat lines sent 3 s into the match, ';'-separated, e.g. "/cars;/car wildfire"
+    [string]$AutoChat = "", # tests: chat lines sent 3 s after the match starts, ';'-separated, e.g. "/cars;/car wildfire"
+    [string]$Emotes = "",   # four emote numbers for the emote wheel (hmmrevive-emotes.txt), e.g. 3,7,0,12; empty = the first four
+    [switch]$AutoEmote,     # tests: play each emote once, from 5 s into the match
+    [string]$DumpImages = "" # write skin/emote pictures for the launcher into this folder, then quit (no match)
 )
 $inst = Join-Path $PSScriptRoot "..\$Instance" | Resolve-Path
 $log = "$inst\client_$Name.log"
@@ -31,6 +34,9 @@ if ($Skin) { $a += "--hmmrevive-skin=$($Skin -replace '\s','')" }
 if ($Team) { $a += "--hmmrevive-team=$Team" }
 if ($Spectate) { $a += "--hmmrevive-spectate" }
 if ($Shots -gt 0) { $a += "--hmmrevive-shots=$Shots" }
+if ($Emotes) { $a += "--hmmrevive-emotes=$Emotes" }
+if ($DumpImages) { $a += "`"--hmmrevive-dump-images=$DumpImages`"" }
+if ($AutoEmote) { $a += "--hmmrevive-autoemote" }
 if ($AutoChat) { $a += "`"--hmmrevive-autochat=$AutoChat`"" }
 if ($Width -gt 0 -and $Height -gt 0) { $a += @("-screen-width", $Width, "-screen-height", $Height) }
 if ($Windowed) { $a += @("-screen-fullscreen", "0") } elseif ($Fullscreen) { $a += @("-screen-fullscreen", "1") }

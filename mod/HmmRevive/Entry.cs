@@ -30,6 +30,9 @@ namespace HmmRevive
         /// <summary>Client: team to join (--hmmrevive-team=red|blue), sent with the login like the car. null = the server's choice.</summary>
         public static string Team { get; private set; }
 
+        /// <summary>Client: four emote numbers for the emote wheel (--hmmrevive-emotes=3,7,0,12), sent with the login. null = the first four.</summary>
+        public static string Emotes { get; private set; }
+
         /// <summary>Client: watch the match as a spectator (--hmmrevive-spectate): the game's narrator, no car. The server
         /// takes two (AuthenticationManager.FakeNarrator).</summary>
         public static bool Spectate { get; private set; }
@@ -70,6 +73,12 @@ namespace HmmRevive
 
         /// <summary>Client test aid (--hmmrevive-autochat="/cars;/car wildfire"): chat lines sent once, 3 s into the match.</summary>
         public static string[] AutoChat { get; private set; }
+
+        /// <summary>Client test aid (--hmmrevive-autoemote): plays each of the four emotes once, from 5 s into the match.</summary>
+        public static bool AutoEmote { get; private set; }
+
+        /// <summary>Client (--hmmrevive-dump-images=DIR): writes skin and emote pictures for the launcher, then quits. See ImageDump.</summary>
+        public static string DumpImages { get; private set; }
 
         // Clients got the match server's RSA public key from Swordfish at login, and servers got the private key.
         // Without Swordfish the client spins forever in LidgrenNetClient.SendCipherKeyToRemotePeer. Hoplon shipped a
@@ -151,8 +160,14 @@ namespace HmmRevive
             string team = Array.Find(args, a => a.StartsWith("--hmmrevive-team=", StringComparison.OrdinalIgnoreCase));
             if (team != null) Team = team.Substring("--hmmrevive-team=".Length).Trim('"', '\'', ' ').ToLowerInvariant();
             if (Team != "red" && Team != "blue") Team = null;
+            string emotes = Array.Find(args, a => a.StartsWith("--hmmrevive-emotes=", StringComparison.OrdinalIgnoreCase));
+            if (emotes != null) Emotes = System.Text.RegularExpressions.Regex.Replace(emotes.Substring("--hmmrevive-emotes=".Length), "[^0-9,]", "");
+            if (Emotes == "") Emotes = null;
+            string dump = Array.Find(args, a => a.StartsWith("--hmmrevive-dump-images=", StringComparison.OrdinalIgnoreCase));
+            if (dump != null) DumpImages = dump.Substring("--hmmrevive-dump-images=".Length).Trim('"', '\'', ' ');
+            AutoEmote = Array.Exists(args, a => a.Equals("--hmmrevive-autoemote", StringComparison.OrdinalIgnoreCase));
             Spectate = Array.Exists(args, a => a.Equals("--hmmrevive-spectate", StringComparison.OrdinalIgnoreCase));
-            if (Spectate) Car = Skin = Team = null;
+            if (Spectate) Car = Skin = Team = Emotes = null;
             string endQuit = Array.Find(args, a => a.StartsWith("--hmmrevive-end-quit=", StringComparison.OrdinalIgnoreCase));
             if (endQuit != null) EndQuitDelay = float.Parse(endQuit.Substring("--hmmrevive-end-quit=".Length), System.Globalization.CultureInfo.InvariantCulture);
             RedBotCars = ParseList(args, "--hmmrevive-bot-cars-red=");
@@ -197,7 +212,7 @@ namespace HmmRevive
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
             InstallTestCryptoKeys();
             HideOwnWindows();
-            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} Spectate={Spectate} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairRate} Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
+            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} Emotes={Emotes} Spectate={Spectate} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairRate} Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
         }
     }
 

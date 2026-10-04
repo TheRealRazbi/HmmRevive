@@ -84,7 +84,7 @@ namespace HmmRevive.Legacy
             pick.loadingState = loading;
             // Hoplon's ServerPickConfig asset wasn't shipped with the client: make the same config at runtime.
             var cfg = ScriptableObject.CreateInstance<ScreenConfig>();
-#if Y2016
+#if Y2016 || Y2017SEP
             cfg.ConfigDic["PickTime"] = Entry.PickTime.ToString(System.Globalization.CultureInfo.InvariantCulture);
             cfg.ConfigDic["CustomizationTime"] = Entry.CustomizationTime.ToString(System.Globalization.CultureInfo.InvariantCulture);
 #else
@@ -143,7 +143,9 @@ namespace HmmRevive.Legacy
             if (st is PickModeServerSetup && GameHubBehaviour<HMMHub>.Hub.Players.Players.Count == 0)
             {
                 var characters = GameHubBehaviour<HMMHub>.Hub.Characters;
+#if !Y2017SEP
                 characters.IsBotPicking = true;
+#endif
                 FieldInfo selected = characters.GetType().GetField("_allSelected", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (selected != null) selected.SetValue(characters, true);
                 Log.Info("no players: bots pick by themselves" + (selected == null ? " (CharacterService._allSelected not found)" : ""));

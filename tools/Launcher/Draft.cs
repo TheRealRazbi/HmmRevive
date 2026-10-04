@@ -7,14 +7,18 @@ namespace HmmRevive.Launcher
 {
     /// <summary>
     /// Tournament draft, run in the lobby before the match: the teams take turns banning cars, then take turns picking
-    /// them, in the host's order. A = the team that goes first (drawn at random), B = the other one; "A1 B2" means A bans
-    /// one car, then B bans two. The same order is used for the bans and then for the picks. A turn's choices stay hidden
-    /// from the other team until the team locks them in. Picked cars are the team's cars: after the draft each player
-    /// drives one of them, and bots get the ones left. Nobody can pick a banned car or a car the other team picked.
+    /// them, in the host's orders. A = the team that goes first (drawn at random), B = the other one; "A1 B2" means A
+    /// bans (or picks) one car, then B two. Picks past the end of the pick order go one car at a time, alternating. A
+    /// turn's choices stay hidden from the other team until the team locks them in, and a turn has a time limit (like
+    /// the game's own pick screen): when it runs out, the turn is completed at random. Picked cars are the team's cars:
+    /// after the draft each player drives one of them, and bots get the ones left. Nobody can pick a banned car or a car
+    /// the other team picked.
     /// </summary>
     public class Draft
     {
-        public const string DefaultOrder = "A1 B2 A2 B1 B1 A1";
+        public const string DefaultBans = "A1 B1";
+        public const string DefaultPicks = "A1 B2 A2 B1 A1 B1";
+        public const int DefaultTurnSeconds = 60;
 
         public class Turn { public bool Pick; public string Team; public int Count; }
         public class Choice { public string Car, Team; }
@@ -24,10 +28,13 @@ namespace HmmRevive.Launcher
         public readonly List<Choice> Bans = new List<Choice>(), Picks = new List<Choice>();
         public readonly Dictionary<string, List<string>> Pending = new Dictionary<string, List<string>> { ["blue"] = new List<string>(), ["red"] = new List<string>() };
         public int Step;
+        public readonly int TurnSeconds; // 0: no time limit
+        public DateTime? TurnEnds { get; private set; }
         private readonly List<string> _cars;
 
         public bool Done => Step >= Turns.Count;
         public Turn Current => Done ? null : Turns[Step];
+        public bool TimedOut => !Done && TurnEnds != null && DateTime.UtcNow >= TurnEnds.Value;
 
         /// <summary>"A1 B2 A2" → (team A?, count) per step, or null when the text isn't a valid order.</summary>
         public static List<(bool a, int n)> Parse(string order)
@@ -43,34 +50,48 @@ namespace HmmRevive.Launcher
             return steps.Count > 0 && steps.Count <= 20 ? steps : null;
         }
 
+        /// <summary>"A1 b2, A2" → "A1 B2 A2", or null when the text isn't a valid order.</summary>
+        public static string Clean(string order) => Parse(order) == null ? null : string.Join(" ", order.ToUpperInvariant().Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries));
+
         /// <param name="slots">cars each team needs (players + bots)</param>
         /// <param name="cars">every car id</param>
-        public Draft(string order, string first, Dictionary<string, int> slots, IEnumerable<string> cars)
+        public Draft(string banOrder, string pickOrder, string first, Dictionary<string, int> slots, IEnumerable<string> cars, int turnSeconds = DefaultTurnSeconds)
         {
             First = first;
             Second = first == "blue" ? "red" : "blue";
             _cars = cars.ToList();
-            var steps = Parse(order) ?? Parse(DefaultOrder);
+            TurnSeconds = Math.Max(0, turnSeconds);
             // Bans may not leave too few cars for the picks.
             int bansLeft = Math.Max(0, _cars.Count - slots.Values.Sum());
-            foreach (var (a, n) in steps)
+            foreach (var (a, n) in Parse(banOrder) ?? Parse(DefaultBans))
             {
                 int k = Math.Min(n, bansLeft);
                 bansLeft -= k;
                 if (k > 0) Turns.Add(new Turn { Pick = false, Team = a ? First : Second, Count = k });
             }
-            // Picks follow the same order, but a team never picks more cars than it has drivers.
+            // Picks: a team never picks more cars than it has drivers.
             var given = new Dictionary<string, int> { ["blue"] = 0, ["red"] = 0 };
-            foreach (var (a, n) in steps)
+            string last = Second;
+            void AddPick(string team, int n)
             {
-                string team = a ? First : Second;
                 int k = Math.Min(n, slots[team] - given[team]);
-                given[team] += Math.Max(0, k);
-                if (k > 0) Turns.Add(new Turn { Pick = true, Team = team, Count = k });
+                if (k <= 0) return;
+                given[team] += k;
+                last = team;
+                Turns.Add(new Turn { Pick = true, Team = team, Count = k });
             }
-            foreach (string team in new[] { First, Second }) // an order too short for the teams: the rest at the end
-                if (given[team] < slots[team]) Turns.Add(new Turn { Pick = true, Team = team, Count = slots[team] - given[team] });
+            foreach (var (a, n) in Parse(pickOrder) ?? Parse(DefaultPicks)) AddPick(a ? First : Second, n);
+            // An order too short for the teams: one car at a time, alternating, from the team that didn't pick last.
+            while (given[First] < slots[First] || given[Second] < slots[Second])
+            {
+                string next = last == First ? Second : First;
+                if (given[next] >= slots[next]) next = last;
+                AddPick(next, 1);
+            }
+            StartClock();
         }
+
+        private void StartClock() => TurnEnds = TurnSeconds > 0 && !Done ? DateTime.UtcNow.AddSeconds(TurnSeconds) : (DateTime?)null;
 
         public bool Available(string car) => _cars.Contains(car) && !Bans.Any(c => c.Car == car) && !Picks.Any(c => c.Car == car);
 
@@ -104,11 +125,17 @@ namespace HmmRevive.Launcher
         /// <summary>Random choices for the current turn (a team with no players in the lobby).</summary>
         public void Auto(Random rng)
         {
+            Pending[Current.Team].Clear();
+            Fill(rng);
+        }
+
+        /// <summary>The turn's time ran out: the team's selection, completed at random, is locked in.</summary>
+        public void Fill(Random rng)
+        {
             Turn t = Current;
             List<string> p = Pending[t.Team];
-            p.Clear();
-            List<string> free = _cars.Where(Available).OrderBy(_ => rng.Next()).ToList();
-            p.AddRange(free.Take(t.Count));
+            List<string> free = _cars.Where(c => Available(c) && !p.Contains(c)).OrderBy(_ => rng.Next()).ToList();
+            p.AddRange(free.Take(t.Count - p.Count));
             Commit();
         }
 
@@ -119,6 +146,7 @@ namespace HmmRevive.Launcher
             foreach (string car in Pending[t.Team]) into.Add(new Choice { Car = car, Team = t.Team });
             Pending[t.Team].Clear();
             Step++;
+            StartClock();
         }
 
         /// <summary>The draft as a member of <paramref name="viewerTeam"/> sees it: the other team's selection stays hidden.</summary>
@@ -135,6 +163,7 @@ namespace HmmRevive.Launcher
                 ["bans"] = Choices(Bans),
                 ["picks"] = Choices(Picks),
                 ["pending"] = cur != null && cur.Team == viewerTeam ? Pending[viewerTeam].ToArray() : new string[0],
+                ["secondsLeft"] = TurnEnds == null ? -1 : Math.Max(0, (int)Math.Ceiling((TurnEnds.Value - DateTime.UtcNow).TotalSeconds)),
             };
         }
     }

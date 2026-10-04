@@ -135,6 +135,13 @@ namespace HmmRevive.Launcher
             return n.Length == 0 ? null : n;
         }
 
+        /// <summary>The four emotes for the emote wheel ("3,7,0,12", numbers in hmmrevive-emotes.txt), or null for the game's first four.</summary>
+        public static string Emotes()
+        {
+            var list = Data.List("emotes").Select(o => int.TryParse(o?.ToString(), out int n) ? n : -1).ToList();
+            return list.Count == 4 && list.All(n => n >= 0) ? string.Join(",", list) : null;
+        }
+
         public static string SkinFor(string carId)
         {
             string car = Catalog.CarName(carId);
@@ -311,6 +318,8 @@ namespace HmmRevive.Launcher
             if (skin != "0") a.Add("--hmmrevive-skin=" + Regex.Replace(skin, @"[\s#""']", ""));
             if (team == "red" || team == "blue") a.Add("--hmmrevive-team=" + team);
             if (spectate) a.Add("--hmmrevive-spectate");
+            string emotes = Settings.Emotes();
+            if (!spectate && emotes != null) a.Add("--hmmrevive-emotes=" + emotes);
             int w = Settings.Data.Int("width"), h = Settings.Data.Int("height");
             if (w > 0 && h > 0) a.AddRange(new[] { "-screen-width", w.ToString(), "-screen-height", h.ToString() });
             a.AddRange(new[] { "-screen-fullscreen", Settings.Data.Bool("fullscreen", true) ? "1" : "0" });
@@ -338,6 +347,51 @@ namespace HmmRevive.Launcher
                 "[Game]", "SkipTutorial=true", "SkipSplashPlayer=true", "SkipTutorialSplashes=true", "EndConfig" });
             Client = Start(build, a, TestBackground);
             return Client;
+        }
+
+        // --- pictures for the page: skin card art and emotes, made from the player's own game files by a hidden game
+        // (mod ImageDump, --hmmrevive-dump-images) once per setup. Nothing of the game's art ships with the kit. ---
+        public static string ImagesDir => Path.Combine(Paths.Instance, "hmmrevive-images");
+        private static Process _images;
+        private static bool _imagesTried;
+
+        /// <summary>The pictures exist and were made by the mod that is set up now.</summary>
+        public static bool ImagesReady
+        {
+            get
+            {
+                try { return File.ReadAllText(Path.Combine(ImagesDir, "done.txt")).Trim() == GameVersion; }
+                catch { return false; }
+            }
+        }
+
+        /// <summary>Emotes in the game (hmmrevive-emotes.txt, written by the mod), 0 before the pictures were made.</summary>
+        public static int EmoteCount
+        {
+            get
+            {
+                try { return File.ReadAllLines(Path.Combine(Paths.Instance, "hmmrevive-emotes.txt")).Count(l => l.Contains("	")); }
+                catch { return 0; }
+            }
+        }
+
+        /// <summary>Called on every page poll: makes the pictures once when they're missing (takes ~15 s, hidden).</summary>
+        public static void EnsureImages()
+        {
+            if (_imagesTried || Running(_images) || SetupStatus == "running" || !Builds.Ready(Builds.Steam) || ImagesReady) return;
+            _imagesTried = true;
+            var a = new List<string> { "-batchmode", "--hmmrevive-mute", "-logFile", Path.Combine(Paths.Instance, "client_images.log"),
+                "--hmmrevive-dump-images=" + ImagesDir,
+                "BeginConfig", "[Debug]", "SkipSwordfish=true", "DirectMatch=true", "PlayerName=HmmRevivePictures",
+                "[Server]", "IP=127.0.0.1", "Port=1", "EndConfig" };
+            try
+            {
+                _images = Start(Builds.Steam, a, true);
+                try { _images.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+                Process p = _images;
+                new Thread(() => { if (!p.WaitForExit(240000)) try { p.Kill(); } catch { } }) { IsBackground = true }.Start();
+            }
+            catch (Exception e) { Program.Log("couldn't make the pictures: " + e.Message); }
         }
 
         public static void StopClient()
@@ -470,6 +524,7 @@ namespace HmmRevive.Launcher
                         if (p.ExitCode != 0) throw new Exception("patcher exit code " + p.ExitCode);
                     }
                     SetupStatus = "done";
+                    _imagesTried = false; // new game files or mod: make the pictures again
                 }
                 catch (Exception e)
                 {
