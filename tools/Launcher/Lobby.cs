@@ -55,6 +55,10 @@ namespace HmmRevive.Launcher
         public string Phase = "lobby"; // lobby, starting, playing
         public string Message = "";
         public int Arena = 1, Score = 3;
+        /// <summary>Per-car HP/move/damage percent for the mod (100 = 1×). Keys: "default", car id or name.</summary>
+        public Dictionary<string, object> CarStats = DefaultCarStats();
+        /// <summary>Server log: DAMAGE lines in hmmrevive-server-*.log (--hmmrevive-log-damage).</summary>
+        public bool LogDamage;
         public bool AutoStart = true;
         public bool Spectators, DraftOn;
         public string DraftBans = Draft.DefaultBans, DraftPicks = Draft.DefaultPicks;
@@ -112,6 +116,9 @@ namespace HmmRevive.Launcher
 
         // ---- settings ----
 
+        private static Dictionary<string, object> DefaultCarStats() =>
+            new Dictionary<string, object> { ["default"] = new Dictionary<string, object> { ["hp"] = 100, ["move"] = 100, ["damage"] = 100 } };
+
         private void LoadSetup(Dictionary<string, object> h)
         {
             if (h == null) return;
@@ -124,6 +131,10 @@ namespace HmmRevive.Launcher
             DraftBans = Draft.Clean(h.Str("draftBans")) ?? DraftBans;
             DraftPicks = Draft.Clean(h.Str("draftPicks")) ?? DraftPicks;
             DraftTime = Math.Max(0, Math.Min(600, h.Int("draftTime", DraftTime)));
+            var cs = h.Obj("carStats");
+            if (cs != null && cs.Count > 0) CarStats = cs;
+            else CarStats = DefaultCarStats();
+            LogDamage = h.Bool("logDamage", LogDamage);
             foreach (string t in new[] { "blue", "red" })
             {
                 var d = h.Obj(t);
@@ -144,7 +155,7 @@ namespace HmmRevive.Launcher
         public Dictionary<string, object> SetupJson()
         {
             var d = new Dictionary<string, object> { ["arena"] = Arena, ["score"] = Score, ["autoStart"] = AutoStart, ["spectators"] = Spectators, ["draft"] = DraftOn,
-                ["draftBans"] = DraftBans, ["draftPicks"] = DraftPicks, ["draftTime"] = DraftTime };
+                ["draftBans"] = DraftBans, ["draftPicks"] = DraftPicks, ["draftTime"] = DraftTime, ["carStats"] = CarStats, ["logDamage"] = LogDamage };
             foreach (var t in Teams)
                 d[t.Key] = new Dictionary<string, object> { ["bots"] = t.Value.Bots, ["difficulty"] = t.Value.Difficulty, ["cars"] = t.Value.Cars.ToArray() };
             return d;
@@ -510,6 +521,8 @@ namespace HmmRevive.Launcher
                 BluBots = BotsOn("blue"), RedBots = BotsOn("red"),
                 BluDifficulty = Teams["blue"].Difficulty, RedDifficulty = Teams["red"].Difficulty,
                 BluBotCars = BotCars("blue"), RedBotCars = BotCars("red"),
+                CarStats = Game.CompactCarStats(CarStats),
+                LogDamage = LogDamage,
             };
             if (legacy) // the game's own rules: one arena, cars picked in the game, original points to win
             {
@@ -644,6 +657,7 @@ namespace HmmRevive.Launcher
                     ["message"] = Message,
                     ["arena"] = Arena,
                     ["score"] = Score,
+                    ["carStats"] = Game.CompactCarStats(CarStats),
                     ["autoStart"] = AutoStart,
                     ["spectators"] = SpectatorsOn,
                     ["spectatorSeatsFreeing"] = Freeing,

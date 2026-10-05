@@ -79,6 +79,33 @@ namespace HmmRevive
         public static bool AnyoneMayChat() => true;
 
         // Start of HMMHub.Start: hub is initialized, safe to wake server-only components.
+        public static float ScaleMovementScalar(float accel, object mov) =>
+            CarMoveOverlay.ScaleMovementScalar(accel, mov as HeavyMetalMachines.Car.CarMovement);
+
+        public static void ScaleStoredLastAccel(object mov) =>
+            CarMoveOverlay.ScaleStoredLastAccel(mov as HeavyMetalMachines.Car.CarMovement);
+
+        public static void BeforeApplyInstant(object victimCtrl, object mod, object causer)
+        {
+            CarDamageOverlay.BeforeApplyInstant(
+                victimCtrl as HeavyMetalMachines.Combat.CombatController,
+                mod as HeavyMetalMachines.Combat.ModifierInstance,
+                causer as HeavyMetalMachines.Combat.CombatObject);
+        }
+
+        public static void AfterApplyInstant(object victimCtrl)
+        {
+            CarDamageOverlay.AfterApplyInstant(victimCtrl as HeavyMetalMachines.Combat.CombatController);
+        }
+
+        // BombGadget.OnLinkCreatedCallback: drop lobby move/damage before link modifiers / chain physics.
+        public static void BeforeBombLink(object bombGadget)
+        {
+            var g = bombGadget as HeavyMetalMachines.Combat.Gadget.BombGadget;
+            if (g?.Combat == null) return;
+            CarStats.StripBeforeBombLink(g.Combat);
+        }
+
         public static void HubStart(object hub)
         {
             if (Entry.ServerMode) ServerBootstrap.ActivateDeferred();

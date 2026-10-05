@@ -102,6 +102,25 @@ static class Program
 
         Prologue(Target("Pocketverse.GameState", "EnableState"), il => new[] { il.Create(OpCodes.Ldarg_0), il.Create(OpCodes.Call, Hook("HmmRevive.Hooks", "StateEnabled")) });
         Prologue(Target("HeavyMetalMachines.HMMHub", "Start"), il => new[] { il.Create(OpCodes.Ldarg_0), il.Create(OpCodes.Call, Hook("HmmRevive.Hooks", "HubStart")) });
+        Prologue(Target("HeavyMetalMachines.Combat.Gadget.BombGadget", "OnLinkCreatedCallback"), il => new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Call, Hook("HmmRevive.Hooks", "BeforeBombLink")),
+        });
+        PatchCarMovementMoveScale(Target, Hook, module);
+        var applyInstant = Target("HeavyMetalMachines.Combat.CombatController", "ApplyInstant");
+        Prologue(applyInstant, il => new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Ldarg_1),
+            il.Create(OpCodes.Ldarg_2),
+            il.Create(OpCodes.Call, Hook("HmmRevive.Hooks", "BeforeApplyInstant")),
+        });
+        Epilogue(applyInstant, il => new[]
+        {
+            il.Create(OpCodes.Ldarg_0),
+            il.Create(OpCodes.Call, Hook("HmmRevive.Hooks", "AfterApplyInstant")),
+        });
         Prologue(Target("HeavyMetalMachines.Frontend.HudWindowManager", "GameState_ListenToStateChanged"), il => new[] { il.Create(OpCodes.Ldarg_0), il.Create(OpCodes.Call, Hook("HmmRevive.Hooks", "HudStateChanged")) });
 
         SkipIf(Target("HeavyMetalMachines.Windows.WindowsPlatform", "CheckSingleApplicationInstance"), Hook("HmmRevive.Hooks", "SkipSingleInstanceCheck"), OpCodes.Ldc_I4_1);
@@ -251,12 +270,68 @@ static class Program
         Console.WriteLine($"patched {TargetDll}");
     }
 
+    static void PatchCarMovementMoveScale(
+        Func<string, string, MethodDefinition> target,
+        Func<string, string, MethodReference> hook,
+        ModuleDefinition module)
+    {
+        var moveFu = target("HeavyMetalMachines.Car.CarMovement", "MovementFixedUpdate");
+        var temp = new VariableDefinition(module.TypeSystem.Single);
+        moveFu.Body.Variables.Add(temp);
+        var mil = moveFu.Body.GetILProcessor();
+        MethodReference scaleScalar = hook("HmmRevive.Hooks", "ScaleMovementScalar");
+        MethodReference scaleLast = hook("HmmRevive.Hooks", "ScaleStoredLastAccel");
+        int forcePaths = 0;
+        foreach (Instruction ins in moveFu.Body.Instructions.ToList())
+        {
+            if (ins.OpCode != OpCodes.Call || ins.Operand is not MethodReference mr) continue;
+            if (mr.Name != "get_forward" && mr.Name != "get_right") continue;
+            if (!LeadsToAddRelativeForce(ins)) continue;
+            if (ins.Previous?.OpCode == OpCodes.Call && ins.Previous.Operand is MethodReference prev && prev.Name == "ScaleMovementScalar")
+                continue;
+            Instruction[] patch =
+            {
+                mil.Create(OpCodes.Stloc_S, temp),
+                mil.Create(OpCodes.Ldloc_S, temp),
+                mil.Create(OpCodes.Ldarg_0),
+                mil.Create(OpCodes.Call, scaleScalar),
+            };
+            foreach (var p in patch) mil.InsertBefore(ins, p);
+            forcePaths++;
+        }
+        var stLastAccel = moveFu.Body.Instructions.First(i => i.OpCode == OpCodes.Stfld
+            && i.Operand is FieldReference fr && fr.Name == "_lastAccel");
+        var afterStore = stLastAccel.Next;
+        mil.InsertBefore(afterStore, mil.Create(OpCodes.Ldarg_0));
+        mil.InsertBefore(afterStore, mil.Create(OpCodes.Call, scaleLast));
+        Console.WriteLine($"  move scale x{forcePaths} force paths + _lastAccel -> CarMovement::MovementFixedUpdate");
+    }
+
+    static bool LeadsToAddRelativeForce(Instruction ins)
+    {
+        Instruction n = ins.Next;
+        for (int k = 0; k < 8 && n != null; k++, n = n.Next)
+        {
+            if (n.OpCode == OpCodes.Callvirt && n.Operand is MethodReference mr && mr.Name == "AddRelativeForce")
+                return true;
+        }
+        return false;
+    }
+
     static void Prologue(MethodDefinition m, Func<ILProcessor, Instruction[]> build)
     {
         var il = m.Body.GetILProcessor();
         var first = m.Body.Instructions[0];
         foreach (var ins in build(il)) il.InsertBefore(first, ins);
         Console.WriteLine($"  prologue -> {m.DeclaringType.FullName}::{m.Name}");
+    }
+
+    static void Epilogue(MethodDefinition m, Func<ILProcessor, Instruction[]> build)
+    {
+        var il = m.Body.GetILProcessor();
+        var ret = m.Body.Instructions.Last(i => i.OpCode == OpCodes.Ret);
+        foreach (var ins in build(il)) il.InsertBefore(ret, ins);
+        Console.WriteLine($"  epilogue -> {m.DeclaringType.FullName}::{m.Name}");
     }
 
     // if (hook(args...)) return <retValue>;   (retValue null = void method; args are argument indexes, 0 = this)

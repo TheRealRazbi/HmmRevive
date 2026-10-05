@@ -52,6 +52,9 @@ namespace HmmRevive
         /// <summary>Test: log everything loaded in the match that can heal (--hmmrevive-scan-heal, HealScan.cs).</summary>
         public static bool ScanHeal { get; private set; }
 
+        /// <summary>Log each weapon HP hit: base amount, lobby damage%, final (--hmmrevive-log-damage).</summary>
+        public static bool LogDamage { get; private set; }
+
         /// <summary>Chaos only picks from these car ids (--hmmrevive-chaos-cars=8,7), e.g. to repeat one swap pair. null = any car.</summary>
         public static int[] ChaosCars { get; private set; }
 
@@ -73,6 +76,9 @@ namespace HmmRevive
 
         /// <summary>Client test aid (--hmmrevive-autochat="/cars;/car wildfire"): chat lines sent once, 3 s into the match.</summary>
         public static string[] AutoChat { get; private set; }
+
+        /// <summary>Server: per-car HP/move/damage percent (see <see cref="CarStats"/>).</summary>
+        public static string CarStatsConfig { get; private set; }
 
         /// <summary>Client test aid (--hmmrevive-autoemote): plays each of the four emotes once, from 5 s into the match.</summary>
         public static bool AutoEmote { get; private set; }
@@ -174,6 +180,7 @@ namespace HmmRevive
             BluBotCars = ParseList(args, "--hmmrevive-bot-cars-blue=");
             Chaos = Array.Exists(args, a => a.Equals("--hmmrevive-chaos", StringComparison.OrdinalIgnoreCase));
             ScanHeal = Array.Exists(args, a => a.Equals("--hmmrevive-scan-heal", StringComparison.OrdinalIgnoreCase));
+            LogDamage = Array.Exists(args, a => a.Equals("--hmmrevive-log-damage", StringComparison.OrdinalIgnoreCase));
             string chaosCars = Array.Find(args, a => a.StartsWith("--hmmrevive-chaos-cars=", StringComparison.OrdinalIgnoreCase));
             if (chaosCars != null)
             {
@@ -204,6 +211,12 @@ namespace HmmRevive
             }
             RedBotDifficulty = ParseDifficulty(args, "--hmmrevive-difficulty-red=");
             BluBotDifficulty = ParseDifficulty(args, "--hmmrevive-difficulty-blue=");
+            string carStats = Array.Find(args, a => a.StartsWith("--hmmrevive-car-stats=", StringComparison.OrdinalIgnoreCase));
+            if (carStats != null && carStats.Length > "--hmmrevive-car-stats=".Length)
+            {
+                CarStatsConfig = carStats.Substring("--hmmrevive-car-stats=".Length).Trim('"', '\'');
+                CarStats.Configure(CarStatsConfig);
+            }
             Mute = ServerMode || Array.Exists(args, a => a.Equals("--hmmrevive-mute", StringComparison.OrdinalIgnoreCase));
             Application.logMessageReceived += (msg, stack, type) =>
             {

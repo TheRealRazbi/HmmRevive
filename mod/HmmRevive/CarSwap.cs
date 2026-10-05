@@ -729,6 +729,7 @@ namespace HmmRevive
                     p.y = 10000f;
                     render.localPosition = p;
                 }
+                CarStats.ClearObject(combat);
                 Log.Info($"SWAP {player.Name} car={car.ObjId} {old?.name} -> {info.name} skin={asset} alive={combat.IsAlive()} state={spawn.State} in {(DateTime.Now - started).TotalMilliseconds:0}ms");
                 return true;
             }

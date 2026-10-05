@@ -231,7 +231,7 @@ namespace HmmRevive.Launcher
                 _launchedMatch = match;
                 int score = d.Int("score");
                 string car = Drafted(d) ? me.Str("car") : null; // null: the car in our settings
-                try { Game.StartClient(d.Str("build") ?? Builds.Steam, GameIp, d.Int("gamePort", 9696), me.Str("team"), score == 3 ? 0 : score, car); }
+                try { Game.StartClient(d.Str("build") ?? Builds.Steam, GameIp, d.Int("gamePort", 9696), me.Str("team"), score == 3 ? 0 : score, car, d.Str("carStats")); }
                 catch (Exception e) { Error = "Couldn't start the game: " + e.Message; }
             }
         }

@@ -135,7 +135,8 @@ namespace HmmRevive.Launcher
             var d = r.Method == "POST" ? Js.Read(r.Body) : null;
             switch (r.Path)
             {
-                case "/api/hello": return Response.Json(new Dictionary<string, object> { ["app"] = "hmmrevive-launcher", ["settings"] = Paths.Settings });
+                case "/api/hello": return Response.Json(new Dictionary<string, object> {
+                    ["app"] = "hmmrevive-launcher", ["settings"] = Paths.Settings, ["version"] = Version, ["ui"] = WebSource });
                 case "/api/catalog": return Response.Json(Catalog.ToJson());
                 case "/api/state": return Response.Json(State());
                 case "/api/settings": return SaveSettings(d);
@@ -388,7 +389,19 @@ namespace HmmRevive.Launcher
             };
         }
 
-        // ---- page files (embedded web/*) ----
+        // ---- page files (dev folder when present, else embedded web/*) ----
+
+        private static string WebDevDir => Path.Combine(Paths.Root, "tools", "Launcher", "web");
+        private static bool _loggedWebSource;
+
+        public static string WebSource
+        {
+            get
+            {
+                if (Directory.Exists(WebDevDir) && File.Exists(Path.Combine(WebDevDir, "index.html"))) return "dev";
+                return "embedded";
+            }
+        }
 
         // Skin and emote pictures the game made on this PC (Game.EnsureImages): /img/skins/CAR-N.jpg, /img/emotes/N.png.
         private static Response Picture(string path)
@@ -402,16 +415,29 @@ namespace HmmRevive.Launcher
         private static Response Static(string path)
         {
             if (path == "/") path = "/index.html";
+            string rel = path.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+            string disk = Path.Combine(WebDevDir, rel);
+            if (File.Exists(disk))
+            {
+                if (!_loggedWebSource) { _loggedWebSource = true; Log("UI from " + WebDevDir + " (refresh the page; no rebuild needed)"); }
+                return FileResponse(path, File.ReadAllBytes(disk));
+            }
             string name = "web" + path;
             using (Stream st = Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
             {
                 if (st == null) return Response.Error("not found", 404);
+                if (!_loggedWebSource) { _loggedWebSource = true; Log("UI embedded in HMM-Revive.exe (rebuild launcher after web edits)"); }
                 var ms = new MemoryStream();
                 st.CopyTo(ms);
-                string type = path.EndsWith(".html") ? "text/html; charset=utf-8" : path.EndsWith(".js") ? "text/javascript; charset=utf-8"
-                    : path.EndsWith(".css") ? "text/css; charset=utf-8" : path.EndsWith(".svg") ? "image/svg+xml" : "application/octet-stream";
-                return new Response { Body = ms.ToArray(), ContentType = type };
+                return FileResponse(path, ms.ToArray());
             }
+        }
+
+        private static Response FileResponse(string path, byte[] body)
+        {
+            string type = path.EndsWith(".html") ? "text/html; charset=utf-8" : path.EndsWith(".js") ? "text/javascript; charset=utf-8"
+                : path.EndsWith(".css") ? "text/css; charset=utf-8" : path.EndsWith(".svg") ? "image/svg+xml" : "application/octet-stream";
+            return new Response { Body = body, ContentType = type };
         }
     }
 

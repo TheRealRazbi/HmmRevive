@@ -58,6 +58,7 @@ namespace HmmRevive
         private void Update()
         {
             _frame = Time.frameCount;
+            CarStats.Tick(GameHubBehaviour.Hub);
             if (Time.unscaledTime < _next) return;
             _next = Time.unscaledTime + 1f;
             Entry.HideOwnWindows(); // Unity re-shows the blank -batchmode window after startup

@@ -112,6 +112,13 @@
         <h2 data-i18n="match_settings"></h2>
         <label class="steam-only"><span data-i18n="arena"></span> <select id="h-arena"></select></label>
         <label class="steam-only"><span data-i18n="points_to_win"></span> <select id="h-score"></select></label>
+        <div class="car-stats steam-only" id="h-stats-box">
+          <h3 data-i18n="car_stats_title"></h3>
+          <p class="hint" data-i18n="car_stats_hint"></p>
+          <div class="car-stat-list-wrap"><div class="car-stat-list" id="h-stat-list"></div></div>
+          <label class="check"><input type="checkbox" id="h-log-damage"> <span data-i18n="log_damage"></span></label>
+          <p class="hint steam-only" data-i18n="log_damage_hint"></p>
+        </div>
         <div class="bots">
           <div><span class="blue-t" data-i18n="blue_bots"></span> <span class="stepper"><button data-bots="blue:-1">−</button><b id="h-blue-bots"></b><button data-bots="blue:1">+</button></span>
             <select id="h-blue-diff"></select></div>
