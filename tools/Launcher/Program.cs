@@ -130,6 +130,7 @@ namespace HmmRevive.Launcher
             string host = r.Header("Host") ?? "";
             if (host != $"127.0.0.1:{_uiPort}" && host != $"localhost:{_uiPort}") return Response.Error("forbidden", 403);
             if (r.Method == "POST" && r.Header("X-HMM-Revive") != "1") return Response.Error("forbidden", 403);
+            if (r.Method == "GET" && r.Path.StartsWith("/img/")) return Picture(r.Path);
             if (r.Method == "GET" && !r.Path.StartsWith("/api/")) return Static(r.Path);
             var d = r.Method == "POST" ? Js.Read(r.Body) : null;
             switch (r.Path)
@@ -159,8 +160,17 @@ namespace HmmRevive.Launcher
                     _lobby?.ResetDraft();
                     return Ok();
                 case "/api/host/move":
-                    _lobby?.MoveMember(d.Str("id"), d.Str("team"));
-                    return Ok();
+                {
+                    if (_lobby == null) return Response.Error("You're not hosting.");
+                    string err = _lobby.MoveMember(d.Str("id"), d.Str("team"));
+                    return err == null ? Ok() : Response.Error(err);
+                }
+                case "/api/host/swap":
+                {
+                    if (_lobby == null) return Response.Error("You're not hosting.");
+                    string err = _lobby.SwapMembers(d.Str("a"), d.Str("b"));
+                    return err == null ? Ok() : Response.Error(err);
+                }
                 case "/api/join": return JoinLobby(d.Str("address"));
                 case "/api/leave":
                     LeaveLobby();
@@ -177,6 +187,13 @@ namespace HmmRevive.Launcher
                     Session s = _session;
                     if (s == null) return Response.Error("You're not in a lobby.");
                     string err = s.DraftAct(d.Str("action"), d.Str("car"));
+                    return err == null ? Ok() : Response.Error(err);
+                }
+                case "/api/lobby/chat":
+                {
+                    Session s = _session;
+                    if (s == null) return Response.Error("You're not in a lobby.");
+                    string err = s.Say(d.Str("text"));
                     return err == null ? Ok() : Response.Error(err);
                 }
                 case "/api/lobby/relaunch":
@@ -238,9 +255,18 @@ namespace HmmRevive.Launcher
                 if (carName != null) skins[carName] = System.Text.RegularExpressions.Regex.Replace(d.Str("skin") ?? "0", @"[\s#""']", "");
                 Settings.Data["skins"] = skins;
             }
+            if (d.ContainsKey("emotes"))
+            {
+                int count = Game.EmoteCount;
+                var picks = d.List("emotes").Select(o => int.TryParse(o?.ToString(), out int n) ? n : -1).ToList();
+                if (picks.Count != 4 || picks.Any(n => n < 0 || (count > 0 && n >= count))) return Response.Error("Pick four emotes.");
+                Settings.Data["emotes"] = picks.Cast<object>().ToList();
+            }
             if (d.ContainsKey("width")) Settings.Data["width"] = Math.Max(0, d.Int("width"));
             if (d.ContainsKey("height")) Settings.Data["height"] = Math.Max(0, d.Int("height"));
             if (d.ContainsKey("fullscreen")) Settings.Data["fullscreen"] = d.Bool("fullscreen", true);
+            if (Builds.Legacy.Contains(d.Str("hostBuild")) || d.Str("hostBuild") == Builds.Steam) Settings.Data["hostBuild"] = d.Str("hostBuild");
+            if (d.ContainsKey("showNov")) Settings.Data["showNov"] = d.Bool("showNov", false); // Nov 2017 build in the Host list
             if (d.Str("lang") == "en" || d.Str("lang") == "pt") Settings.Data["lang"] = d.Str("lang"); // page language
             Settings.Save();
             _session?.SendChoices(null); // car/skin changes show in the lobby
@@ -325,6 +351,7 @@ namespace HmmRevive.Launcher
                 lock (Gate) if (_session == s) _session = null;
                 s = null;
             }
+            Game.EnsureImages();
             string kit = Game.KitVersion, game = Game.GameVersion;
             string setupLog;
             lock (Game.SetupLog) setupLog = Game.SetupLog.ToString();
@@ -354,6 +381,8 @@ namespace HmmRevive.Launcher
                 ["lobbyAddress"] = s?.Address,
                 ["notice"] = _notice,
                 ["gameRunning"] = Game.Running(Game.Client),
+                ["images"] = Game.ImagesReady, // skin and emote pictures (/img/...)
+                ["emoteCount"] = Game.EmoteCount,
                 ["serverRunning"] = Game.Running(Game.Server),
                 ["firewall"] = Firewall.Cached,
                 ["lobbyPort"] = _lobbyPort,
@@ -362,6 +391,15 @@ namespace HmmRevive.Launcher
         }
 
         // ---- page files (embedded web/*) ----
+
+        // Skin and emote pictures the game made on this PC (Game.EnsureImages): /img/skins/CAR-N.jpg, /img/emotes/N.png.
+        private static Response Picture(string path)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(path, @"^/img/(skins/\d+-\d+\.jpg|emotes/\d+\.png)$");
+            string file = m.Success ? Path.Combine(Game.ImagesDir, m.Groups[1].Value.Replace('/', '\\')) : null;
+            if (file == null || !File.Exists(file)) return Response.Error("not found", 404);
+            return new Response { Body = File.ReadAllBytes(file), ContentType = file.EndsWith(".png") ? "image/png" : "image/jpeg" };
+        }
 
         private static Response Static(string path)
         {

@@ -71,6 +71,13 @@ namespace HmmRevive
             Log.Info($"FMOD muted (getCoreSystem={r1}, setOutput={r2})");
         }
 
+        // Spectators chat with everyone like in the game's custom matches (only there did Hoplon allow it).
+        // ChatService.ClientSendMessage: replaces SpectatorController.IsSpectating in "spectators may not chat".
+        public static bool SpectatorChatBlocked() => false;
+
+        // Start of ChatService.IsValidChatSender (server): if (AnyoneMayChat()) return true;
+        public static bool AnyoneMayChat() => true;
+
         // Start of HMMHub.Start: hub is initialized, safe to wake server-only components.
         public static void HubStart(object hub)
         {

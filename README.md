@@ -8,20 +8,20 @@ HMM Revive brings it back for free, private matches among friends:
 - a headless **match server** built from the game's own shipped server code (the server scene was never shipped,
   so the mod rebuilds it at runtime), with bots;
 - **clients connect directly** to that server (the game's built-in developer direct-connect mode), for example over
-  [Tailscale](https://tailscale.com).
+  [Radmin VPN](https://www.radmin-vpn.com) or [Tailscale](https://tailscale.com).
 
 Extras: a launcher window (English and Portuguese) to host a lobby, find and join lobbies on your network, pick your
 team, car and skin, and rematch; pick your car and skin at launch, switch either mid-match (`/car` and `/skin` in chat), bot count,
-difficulty and cars per team, out-of-combat repair.
+difficulty and cars per team, out-of-combat repair, ball speed (also mid-match: `/ballspeed 1.5`).
 
 > Unofficial fan project, not affiliated with or endorsed by Hoplon. **No Hoplon code or game files** are in this
-> repository or in the kit: the patcher works on a copy of *your own* Steam install, and the Steam install itself is
-> never modified.
+> repository or in the kit: the patcher works on a copy of *your own* game folder (Steam install or not), and that
+> folder is never modified.
 
 ## Play
 
 You need Windows and Heavy Metal Machines (build `Release.15.00.250`): from your Steam library, or a copy of the game
-folder anywhere on your PC.
+folder anywhere on your PC. Steam doesn't need to be installed or open.
 
 1. Download `HMM-Revive-friend-kit-<version>.zip` from [Releases](../../releases).
 2. Unzip it to a folder whose path has **no accented or special letters**, e.g. `C:\HMM-Revive`
@@ -31,8 +31,8 @@ folder anywhere on your PC.
 4. One person clicks **Host** and opens a lobby; the others see it under **Play** (or type the host's address) and
    join. Everyone picks team, car and skin and clicks Ready, and the match starts. After it, you're all back in the
    lobby for a rematch.
-   Players reach the host over [Tailscale](https://tailscale.com) or [ZeroTier](https://www.zerotier.com) (or the same
-   home network). `host.bat` and `play.bat` still work too.
+   Players reach the host over [Radmin VPN](https://www.radmin-vpn.com) (the easiest and most reliable so far),
+   [Tailscale](https://tailscale.com) or [ZeroTier](https://www.zerotier.com) (or the same home network). `host.bat` and `play.bat` still work too.
 
 The step-by-step guide, including hosting over Tailscale, is in the kit and here:
 [README.txt](tools/friend-kit/README.txt) (English), [LEIA-ME.txt](tools/friend-kit/LEIA-ME.txt) (Português).
@@ -42,7 +42,7 @@ In a match, type `/cars` in chat to list the cars and `/car <name>` to switch, o
 your skin (the change happens while you're dead or between rounds).
 
 **Security:** the match server and the lobby have no real authentication. Anyone who can reach their ports (UDP 9696
-for the game, TCP/UDP 9697 for the lobby) can join while they run. Share them over Tailscale or ZeroTier (the kit
+for the game, TCP/UDP 9697 for the lobby) can join while they run. Share them over Radmin VPN, Tailscale or ZeroTier (the kit
 README shows how to limit Tailscale shared users to those ports), and close the lobby after playing.
 
 ## Known limits

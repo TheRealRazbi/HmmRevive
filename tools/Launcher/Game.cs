@@ -135,6 +135,13 @@ namespace HmmRevive.Launcher
             return n.Length == 0 ? null : n;
         }
 
+        /// <summary>The four emotes for the emote wheel ("3,7,0,12", numbers in hmmrevive-emotes.txt), or null for the game's first four.</summary>
+        public static string Emotes()
+        {
+            var list = Data.List("emotes").Select(o => int.TryParse(o?.ToString(), out int n) ? n : -1).ToList();
+            return list.Count == 4 && list.All(n => n >= 0) ? string.Join(",", list) : null;
+        }
+
         public static string SkinFor(string carId)
         {
             string car = Catalog.CarName(carId);
@@ -159,6 +166,15 @@ namespace HmmRevive.Launcher
             new Dictionary<string, object> { ["id"] = 13, ["name"] = "Sacrifice Sanctuary (alpha version)" },
             new Dictionary<string, object> { ["id"] = 5, ["name"] = "Arena Void (test map)" },
         };
+
+        /// <summary>The 2017 builds' arenas (their GameArenaConfig: 0 = tutorial, 1 = Arena_Monster, 2 = Arena_Test). The
+        /// ids mean the same arenas as on Steam, so the lobby keeps one arena setting.</summary>
+        public static readonly object[] LegacyArenas =
+        {
+            new Dictionary<string, object> { ["id"] = 1, ["name"] = "Temple of Sacrifice" },
+            new Dictionary<string, object> { ["id"] = 2, ["name"] = "Metal God Arena" },
+        };
+        public static int LegacyArena(int arena) => arena == 2 ? 2 : 1;
 
         public static void Load()
         {
@@ -197,6 +213,7 @@ namespace HmmRevive.Launcher
         {
             ["cars"] = Cars.Select(c => new Dictionary<string, object> { ["id"] = c.Id, ["name"] = c.Name, ["skins"] = c.Skins.ToArray() }).ToArray(),
             ["arenas"] = Arenas,
+            ["legacyArenas"] = LegacyArenas,
         };
     }
 
@@ -240,7 +257,31 @@ namespace HmmRevive.Launcher
         public class ServerOptions
         {
             public int Port = 9696, Players = 1, Arena = 1, Score = 0, RedBots, BluBots, EndQuit = 30;
+            public int BallSpeed = 100; // percent: 100 = the game's own ball speed (mod BallSpeed.cs)
             public string Build = Builds.Steam, RedDifficulty = "auto", BluDifficulty = "auto", RedBotCars = "", BluBotCars = "";
+            public string HostName; // the lobby host's player name: only they may type /ballspeed in the match
+        }
+
+        /// <summary>The file a running server reads every second for changes the host makes during the match.</summary>
+        public static string LiveFile(string build, int port) => Path.Combine(Builds.Instance(build), $"hmmrevive-live-{port}.txt");
+
+        public static string BallSpeedArg(int percent) => (percent / 100.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>The host changed the ball speed: the running server picks it up within a second and tells the players.</summary>
+        public static void SetLiveBallSpeed(string build, int port, int percent)
+        {
+            try { File.WriteAllText(LiveFile(build, port), "ballspeed=" + BallSpeedArg(percent) + "\r\n"); }
+            catch (Exception e) { Program.Log("live settings: " + e.Message); }
+        }
+
+        // Ball speed, host and live-settings arguments, the same for every build's server.
+        private static IEnumerable<string> LiveArgs(ServerOptions o)
+        {
+            string live = LiveFile(o.Build, o.Port);
+            try { File.Delete(live); } catch { }
+            if (o.BallSpeed != 100) yield return "--hmmrevive-ball-speed=" + BallSpeedArg(o.BallSpeed);
+            if (!string.IsNullOrEmpty(o.HostName)) yield return "--hmmrevive-host=" + o.HostName;
+            yield return "--hmmrevive-live=" + live;
         }
 
         /// <summary>Headless match server, the same command line as tools/run_server.ps1.</summary>
@@ -253,6 +294,7 @@ namespace HmmRevive.Launcher
             var a = new List<string> { "-batchmode", "-nographics" };
             if (o.Score > 0) a.Add("--hmmrevive-score=" + o.Score);
             a.Add("--hmmrevive-end-quit=" + o.EndQuit);
+            a.AddRange(LiveArgs(o));
             if (o.RedBotCars != "") a.Add("--hmmrevive-bot-cars-red=" + o.RedBotCars);
             if (o.BluBotCars != "") a.Add("--hmmrevive-bot-cars-blue=" + o.BluBotCars);
             if (o.RedDifficulty != "auto") a.Add("--hmmrevive-difficulty-red=" + o.RedDifficulty);
@@ -266,16 +308,17 @@ namespace HmmRevive.Launcher
             return Server;
         }
 
-        /// <summary>An old build's server (mod/HmmRevive.Legacy): players pick cars in the game's own pick screen, one arena.</summary>
+        /// <summary>An old build's server (mod/HmmRevive.Legacy): players pick cars in the game's own pick screen.</summary>
         private static Process StartLegacyServer(ServerOptions o, string inst)
         {
             var a = new List<string> { "-batchmode", "-nographics", "-silent-crashes", "--hmmrevive-server", "--hmmrevive-end-quit=" + o.EndQuit };
+            a.AddRange(LiveArgs(o));
             if (o.Score > 0) a.Add("--hmmrevive-score=" + o.Score);
             if (o.RedDifficulty != "auto") a.Add("--hmmrevive-difficulty-red=" + o.RedDifficulty);
             if (o.BluDifficulty != "auto") a.Add("--hmmrevive-difficulty-blue=" + o.BluDifficulty);
             a.AddRange(new[] { "-logFile", Path.Combine(inst, $"server_unity_{o.Port}.log"),
                 "BeginConfig", "[Debug]", "SkipSwordfish=true", "IsDebug=true",
-                "[Game]", "PlayerCount=" + o.Players, "ArenaIndex=1", "RedTeamBotsCount=" + o.RedBots, "BluTeamBotsCount=" + o.BluBots,
+                "[Game]", "PlayerCount=" + o.Players, "ArenaIndex=" + Catalog.LegacyArena(o.Arena), "RedTeamBotsCount=" + o.RedBots, "BluTeamBotsCount=" + o.BluBots,
                 "AllPlayersOnBluTeam=false", "[Server]", "Port=" + o.Port, "EndConfig" });
             Server = Start(o.Build, a, true);
             try { Server.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
@@ -311,6 +354,8 @@ namespace HmmRevive.Launcher
             if (skin != "0") a.Add("--hmmrevive-skin=" + Regex.Replace(skin, @"[\s#""']", ""));
             if (team == "red" || team == "blue") a.Add("--hmmrevive-team=" + team);
             if (spectate) a.Add("--hmmrevive-spectate");
+            string emotes = Settings.Emotes();
+            if (!spectate && emotes != null) a.Add("--hmmrevive-emotes=" + emotes);
             int w = Settings.Data.Int("width"), h = Settings.Data.Int("height");
             if (w > 0 && h > 0) a.AddRange(new[] { "-screen-width", w.ToString(), "-screen-height", h.ToString() });
             a.AddRange(new[] { "-screen-fullscreen", Settings.Data.Bool("fullscreen", true) ? "1" : "0" });
@@ -338,6 +383,51 @@ namespace HmmRevive.Launcher
                 "[Game]", "SkipTutorial=true", "SkipSplashPlayer=true", "SkipTutorialSplashes=true", "EndConfig" });
             Client = Start(build, a, TestBackground);
             return Client;
+        }
+
+        // --- pictures for the page: skin card art and emotes, made from the player's own game files by a hidden game
+        // (mod ImageDump, --hmmrevive-dump-images) once per setup. Nothing of the game's art ships with the kit. ---
+        public static string ImagesDir => Path.Combine(Paths.Instance, "hmmrevive-images");
+        private static Process _images;
+        private static bool _imagesTried;
+
+        /// <summary>The pictures exist and were made by the mod that is set up now.</summary>
+        public static bool ImagesReady
+        {
+            get
+            {
+                try { return File.ReadAllText(Path.Combine(ImagesDir, "done.txt")).Trim() == GameVersion; }
+                catch { return false; }
+            }
+        }
+
+        /// <summary>Emotes in the game (hmmrevive-emotes.txt, written by the mod), 0 before the pictures were made.</summary>
+        public static int EmoteCount
+        {
+            get
+            {
+                try { return File.ReadAllLines(Path.Combine(Paths.Instance, "hmmrevive-emotes.txt")).Count(l => l.Contains("	")); }
+                catch { return 0; }
+            }
+        }
+
+        /// <summary>Called on every page poll: makes the pictures once when they're missing (takes ~15 s, hidden).</summary>
+        public static void EnsureImages()
+        {
+            if (_imagesTried || Running(_images) || SetupStatus == "running" || !Builds.Ready(Builds.Steam) || ImagesReady) return;
+            _imagesTried = true;
+            var a = new List<string> { "-batchmode", "--hmmrevive-mute", "-logFile", Path.Combine(Paths.Instance, "client_images.log"),
+                "--hmmrevive-dump-images=" + ImagesDir,
+                "BeginConfig", "[Debug]", "SkipSwordfish=true", "DirectMatch=true", "PlayerName=HmmRevivePictures",
+                "[Server]", "IP=127.0.0.1", "Port=1", "EndConfig" };
+            try
+            {
+                _images = Start(Builds.Steam, a, true);
+                try { _images.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+                Process p = _images;
+                new Thread(() => { if (!p.WaitForExit(240000)) try { p.Kill(); } catch { } }) { IsBackground = true }.Start();
+            }
+            catch (Exception e) { Program.Log("couldn't make the pictures: " + e.Message); }
         }
 
         public static void StopClient()
@@ -420,18 +510,34 @@ namespace HmmRevive.Launcher
                 {
                     bool pt = Settings.Data.Str("lang") == "pt";
                     string start = FindGame();
-                    // A hidden topmost owner, so the window opens in front of the launcher page instead of behind it.
-                    using (var owner = new System.Windows.Forms.Form { TopMost = true, ShowInTaskbar = false })
-                    using (var dlg = new System.Windows.Forms.OpenFileDialog
+                    // The file window must open in front of the launcher page. Windows doesn't let a program that isn't the
+                    // active one (the page's browser is) put a window in front, so a never-shown topmost owner wasn't
+                    // enough and the window opened behind the page. Now a tiny invisible owner is shown at the mouse and
+                    // pulled to the front with the active window's input attached, and the file window opens over it.
+                    using (var owner = new System.Windows.Forms.Form
                     {
-                        Title = pt ? "Escolha o HMM.exe na pasta do Heavy Metal Machines" : "Choose HMM.exe in your Heavy Metal Machines folder",
-                        Filter = "HMM.exe|HMM.exe",
-                        CheckFileExists = true,
-                        RestoreDirectory = true,
-                        InitialDirectory = start ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer),
+                        TopMost = true, ShowInTaskbar = false, FormBorderStyle = System.Windows.Forms.FormBorderStyle.None,
+                        Opacity = 0, StartPosition = System.Windows.Forms.FormStartPosition.Manual,
+                        Location = System.Windows.Forms.Cursor.Position, Size = new System.Drawing.Size(1, 1),
                     })
                     {
-                        if (dlg.ShowDialog(owner) == System.Windows.Forms.DialogResult.OK) chosen = dlg.FileName;
+                        owner.Shown += (s, e) =>
+                        {
+                            Native.ToFront(owner.Handle);
+                            using (var dlg = new System.Windows.Forms.OpenFileDialog
+                            {
+                                Title = pt ? "Escolha o HMM.exe na pasta do Heavy Metal Machines" : "Choose HMM.exe in your Heavy Metal Machines folder",
+                                Filter = "HMM.exe|HMM.exe",
+                                CheckFileExists = true,
+                                RestoreDirectory = true,
+                                InitialDirectory = start ?? Environment.GetFolderPath(Environment.SpecialFolder.MyComputer),
+                            })
+                            {
+                                if (dlg.ShowDialog(owner) == System.Windows.Forms.DialogResult.OK) chosen = dlg.FileName;
+                            }
+                            owner.Close();
+                        };
+                        owner.ShowDialog();
                     }
                 }
                 catch (Exception e) { error = e; }
@@ -470,6 +576,7 @@ namespace HmmRevive.Launcher
                         if (p.ExitCode != 0) throw new Exception("patcher exit code " + p.ExitCode);
                     }
                     SetupStatus = "done";
+                    _imagesTried = false; // new game files or mod: make the pictures again
                 }
                 catch (Exception e)
                 {
@@ -480,7 +587,7 @@ namespace HmmRevive.Launcher
         }
     }
 
-    /// <summary>This PC's addresses on the networks players use (Tailscale 100.64.0.0/10, ZeroTier, LAN, and a public
+    /// <summary>This PC's addresses on the networks players use (Radmin VPN 26.x.y.z, Tailscale 100.64.0.0/10, ZeroTier, LAN, and a public
     /// "Internet" address, which only servers/VPSes have on an interface; home PCs sit behind a router).</summary>
     public static class Net
     {
@@ -496,6 +603,7 @@ namespace HmmRevive.Launcher
                     byte[] b = u.Address.GetAddressBytes();
                     if (b[0] == 169 && b[1] == 254) continue;
                     string kind = b[0] == 100 && (b[1] & 0xC0) == 64 ? "Tailscale"
+                        : ni.Description.IndexOf("Radmin", StringComparison.OrdinalIgnoreCase) >= 0 || ni.Name.IndexOf("Radmin", StringComparison.OrdinalIgnoreCase) >= 0 ? "Radmin"
                         : ni.Description.IndexOf("ZeroTier", StringComparison.OrdinalIgnoreCase) >= 0 || ni.Name.IndexOf("ZeroTier", StringComparison.OrdinalIgnoreCase) >= 0 ? "ZeroTier"
                         : ni.Description.IndexOf("WireGuard", StringComparison.OrdinalIgnoreCase) >= 0 ? "WireGuard"
                         : b[0] == 10 || (b[0] == 172 && (b[1] & 0xF0) == 16) || (b[0] == 192 && b[1] == 168) || (b[0] == 100 && (b[1] & 0xC0) == 64) ? "LAN"
@@ -503,10 +611,10 @@ namespace HmmRevive.Launcher
                     list.Add(new Dictionary<string, object> { ["ip"] = u.Address.ToString(), ["kind"] = kind, ["mask"] = u.IPv4Mask?.ToString() });
                 }
             }
-            return list.OrderBy(a => a["kind"] as string == "Tailscale" ? 0 : a["kind"] as string == "ZeroTier" ? 1 : 2).ToList();
+            return list.OrderBy(a => a["kind"] as string == "Radmin" ? 0 : a["kind"] as string == "Tailscale" ? 1 : a["kind"] as string == "ZeroTier" ? 2 : 3).ToList();
         }
 
-        /// <summary>Directed broadcast address of every IPv4 interface (ZeroTier and LANs carry broadcasts; Tailscale doesn't).</summary>
+        /// <summary>Directed broadcast address of every IPv4 interface (Radmin VPN, ZeroTier and LANs carry broadcasts; Tailscale doesn't).</summary>
         public static List<IPAddress> Broadcasts()
         {
             var list = new List<IPAddress> { IPAddress.Broadcast };
@@ -556,7 +664,7 @@ namespace HmmRevive.Launcher
         }
     }
 
-    /// <summary>Windows Firewall rules for hosting: game UDP, lobby TCP+UDP, from Tailscale and local subnets (ZeroTier, LAN).</summary>
+    /// <summary>Windows Firewall rules for hosting: game UDP, lobby TCP+UDP, from Tailscale and local subnets (Radmin VPN, ZeroTier, LAN).</summary>
     public static class Firewall
     {
         public const string GameRule = "HMM Revive game", LobbyRule = "HMM Revive lobby", FindRule = "HMM Revive lobby discovery";
@@ -612,6 +720,33 @@ namespace HmmRevive.Launcher
             catch (Exception e) { Program.Log("firewall setup cancelled: " + e.Message); }
             Refresh();
             return Cached;
+        }
+    }
+    /// <summary>Win32 calls to bring the launcher's own windows (the game folder chooser) in front of the page.</summary>
+    internal static class Native
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr pid);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool AttachThreadInput(uint from, uint to, bool attach);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr hWnd);
+
+        /// <summary>Make the window the active one, borrowing the active window's input queue (Windows only lets the
+        /// active program hand over focus).</summary>
+        public static void ToFront(IntPtr hWnd)
+        {
+            uint fg = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero), me = GetCurrentThreadId();
+            bool attached = fg != 0 && fg != me && AttachThreadInput(me, fg, true);
+            try
+            {
+                BringWindowToTop(hWnd);
+                SetForegroundWindow(hWnd);
+            }
+            finally
+            {
+                if (attached) AttachThreadInput(me, fg, false);
+            }
         }
     }
 }

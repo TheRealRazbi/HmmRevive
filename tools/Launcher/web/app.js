@@ -9,6 +9,9 @@ let S = null;          // last /api/state
 let C = { cars: [], arenas: [] }; // /api/catalog
 let view = "play";
 let lastLobbyRev = -1;
+let swapPick = null;   // host: the player picked to swap teams with someone of the other team
+let chatSeen = -1;     // newest lobby chat message seen on the lobby view
+let emoteSlot = -1;    // Settings: the emote slot being changed (0-3), -1 = none
 const DIFFS = () => [["auto", t("diff_auto")], ["easy", t("diff_easy")], ["medium", t("diff_medium")], ["hard", t("diff_hard")]];
 const DRAFT_TIMES = [0, 30, 45, 60, 90, 120]; // seconds per draft turn; 0 = no limit
 const SCORES = () => [["1", t("score_1")], ["2", "2"], ["3", t("score_3")], ["4", "4"], ["5", "5"]];
@@ -57,7 +60,17 @@ function setLang(lang, save) {
 
 // ---------- helpers ----------
 const carName = (id) => (C.cars.find((c) => String(c.id) === String(id)) || {}).name || t("default_car");
-const arenaName = (id) => (C.arenas.find((a) => a.id === id) || {}).name || "Arena " + id;
+// The 2017 builds have two arenas, with the same ids as on Steam (1 Temple of Sacrifice, 2 Metal God Arena).
+const legacyArena = (id) => (id === 2 ? 2 : 1);
+const arenasOf = (build) => (isLegacy(build) ? C.legacyArenas || [] : C.arenas);
+// Ball speed in percent (100 = the game's own); the host can change it during the match too.
+const BALL_SPEEDS = [50, 75, 100, 125, 150, 175, 200, 250, 300];
+const ballName = (p) => (p / 100).toLocaleString(LANG === "pt" ? "pt-BR" : "en") + "x" + (p === 100 ? " (" + t("normal") + ")" : "");
+const ballNote = (p) => (p && p !== 100 ? " · " + t("ball_n", ballName(p)) : "");
+const arenaName = (id, build) => {
+  if (isLegacy(build)) id = legacyArena(id);
+  return (arenasOf(build).find((a) => a.id === id) || {}).name || "Arena " + id;
+};
 const skinsOf = (id) => (C.cars.find((c) => String(c.id) === String(id)) || { skins: ["Original"] }).skins;
 const skinName = (carId, skin) => {
   if (skin === "random") return t("random_skin");
@@ -70,6 +83,9 @@ const points = (n) => (n === 1 ? t("point_1") : t("points_n", n));
 const buildName = (b) => t("build_" + (b || "steam"));
 const isLegacy = (b) => !!b && b !== "steam";
 const haveBuild = (b) => (S.builds || []).includes(b || "steam");
+// Builds the host can pick. The November 2017 build stays experimental and only shows with its Settings tick, so nobody
+// picks it by accident.
+const hostBuilds = () => (S.builds || []).filter((b) => b !== "2017" || S.settings.showNov);
 
 // Fills a <select> once per option-set, and sets its value unless the user is using it.
 function fill(sel, options, value) {
@@ -89,10 +105,10 @@ function paint(el, html) {
   }
 }
 
-// Addresses friends can reach the lobby on: Tailscale, ZeroTier and a public address (servers/VPSes), else the home
+// Addresses friends can reach the lobby on: Radmin VPN, Tailscale, ZeroTier and a public address (servers/VPSes), else the home
 // network. (A WireGuard relay only forwards the game port, not the lobby.)
 const joinAddresses = () => {
-  const vpn = S.addresses.filter((a) => a.kind === "Tailscale" || a.kind === "ZeroTier" || a.kind === "Internet");
+  const vpn = S.addresses.filter((a) => a.kind === "Radmin" || a.kind === "Tailscale" || a.kind === "ZeroTier" || a.kind === "Internet");
   return vpn.length ? vpn : S.addresses.filter((a) => a.kind === "LAN").slice(0, 1);
 };
 const carOptions = () => C.cars.map((c) => [String(c.id), c.name]);
@@ -107,6 +123,16 @@ const pool = (D, team) => (D ? D.picks.filter((c) => c.team === team).map((c) =>
 const botPool = (L, team) => pool(L.draft, team).filter((c) => !L.members.some((m) => m.team === team && m.car === c));
 // My car in this lobby: after a draft it's the one the lobby gave me, not the one in my settings.
 const lobbyCar = (L, me) => (L && L.draft && isPlayer(me) ? me.car : S.settings.car);
+
+// Skin picture next to the car/skin choice (made from the player's game files; none for "random").
+function skinPic(img, carId, skin) {
+  const ok = S.images && carId !== undefined && carId !== "" && /^\d+$/.test(String(skin));
+  img.hidden = !ok;
+  if (!ok) return;
+  const src = `/img/skins/${encodeURIComponent(carId)}-${skin}.jpg`;
+  if (img.getAttribute("src") !== src) img.src = src;
+}
+const myEmotes = () => (Array.isArray(S.settings.emotes) && S.settings.emotes.length === 4 ? S.settings.emotes : [0, 1, 2, 3]);
 
 // ---------- views ----------
 function show(v) {
@@ -126,6 +152,9 @@ function render() {
   $("#me-chip").innerHTML = `<b>${esc(S.settings.name)}</b>` + (L && isLegacy(L.build) ? "" : ` · ${esc(chipCar)}`);
   const inLobby = !!S.lobby;
   $("#nav-lobby").hidden = !inLobby;
+  const said = inLobby ? (S.lobby.chat || []).filter((c) => !c.sys).reduce((n, c) => Math.max(n, c.id), 0) : -1;
+  if (chatSeen < 0 || view === "lobby" || !inLobby) chatSeen = said;
+  $("#nav-lobby").classList.toggle("unread", said > chatSeen);
   if (!inLobby && view === "lobby") return show("play");
   renderBanners();
   if (view === "play") renderPlay();
@@ -181,7 +210,7 @@ function renderPlay() {
     const canJoin = sameVersion && haveBuild(l.build);
     return `<div class="card">
       <div class="t">${t("someones_lobby", esc(l.host || t("someone")))}</div>
-      <div class="m">${isLegacy(l.build) ? esc(buildName(l.build)) : esc(arenaName(l.arena))} · ${l.players === 1 ? t("players_1") : t("players_n", l.players)}${l.bots ? t("plus_bots", l.bots) : ""}${l.draft ? " · " + t("draft_title") : ""}${l.spectatorSeats ? " · " + t("spec_seats_n", l.spectatorSeats) : ""}</div>
+      <div class="m">${isLegacy(l.build) ? esc(buildName(l.build)) + " · " : ""}${esc(arenaName(l.arena, l.build))} · ${l.players === 1 ? t("players_1") : t("players_n", l.players)}${l.bots ? t("plus_bots", l.bots) : ""}${l.draft ? " · " + t("draft_title") : ""}${l.spectatorSeats ? " · " + t("spec_seats_n", l.spectatorSeats) : ""}</div>
       <div class="m">${esc(l.address)} · ${t("via", esc(l.via))}${sameVersion ? "" : ` · <span class="warn-t">${t("version_x", esc(l.version))}</span>`}${sameVersion && !haveBuild(l.build) ? ` · <span class="warn-t">${t("lobby_needs_copy", esc(buildName(l.build)))}</span>` : ""}</div>
       <div class="row"><span class="pill ${live ? "live" : "open"}">${live ? t("match_running_pill") : t("in_lobby_pill")}</span>
         <button class="primary" data-join="${esc(l.address)}" ${canJoin ? "" : "disabled"}>${t("join")}</button></div>
@@ -198,11 +227,14 @@ function renderHost() {
     <p>${addr.length ? t("players_join_with", addr.map((a) => `<code>${esc(a.ip)}</code> <span class="hint">(${esc(a.kind)})</span>`).join(", ")) : t("no_vpn_address")}</p>
     ${S.firewall ? `<p class="ok-t">${t("firewall_ready")}</p>` : `<div class="banner warn"><div>${t("firewall_may_block")}</div><button data-act="firewall">${t("setup_firewall")}</button></div><p></p>`}`);
   // Which game the lobby plays, when more than one copy is set up.
-  const builds = S.builds || [];
+  const builds = hostBuilds();
   $("#host-build-row").hidden = S.hosting || builds.length < 2;
   const saved = builds.includes(S.settings.hostBuild) ? S.settings.hostBuild : builds[0];
   fill($("#host-build"), builds.map((b) => [b, buildName(b)]), saved);
-  $("#host-build-warn").hidden = S.hosting || !isLegacy($("#host-build").value || saved);
+  const picked = $("#host-build").value || saved, warn = $("#host-build-warn");
+  warn.hidden = S.hosting || !isLegacy(picked);
+  warn.className = "banner " + (picked === "2017" ? "warn" : "info");
+  warn.innerHTML = t(picked === "2017" ? "legacy_experimental" : "legacy_note");
   $("#open-lobby").disabled = !builds.length;
   $("#open-lobby").textContent = S.hosting ? t("go_to_lobby") : t("open_lobby");
 }
@@ -212,10 +244,11 @@ function renderLobby() {
   const L = S.lobby;
   const me = L.members.find((m) => m.id === L.me) || {};
   const amHost = S.hosting;
+  if (swapPick && !(amHost && canSwapTeams(L) && L.members.some((m) => m.id === swapPick && isPlayer(m)))) swapPick = null;
   const legacy = isLegacy(L.build);
   $("#lobby-title").textContent = t("someones_lobby", L.host || "?");
   const hostOut = L.members.some((m) => m.host && m.team === "none");
-  $("#lobby-sub").textContent = (legacy ? buildName(L.build) : t("lobby_sub", arenaName(L.arena), points(L.score))) + (L.draftOn ? " · " + t("draft_title") : "")
+  $("#lobby-sub").textContent = (legacy ? buildName(L.build) + " · " + arenaName(L.arena, L.build) : t("lobby_sub", arenaName(L.arena), points(L.score))) + ballNote(L.ballSpeed) + (L.draftOn ? " · " + t("draft_title") : "")
     + (hostOut ? " · " + t("host_not_playing") : "") + (amHost ? "" : " · " + S.lobbyAddress);
 
   // status line
@@ -242,12 +275,15 @@ function renderLobby() {
   }
   renderDraft(L, me);
   renderSpecs(L, me, amHost);
+  renderChat(L);
+  $("#lobby-bottom").classList.toggle("guest", !amHost);
 
   // my controls (after a draft: one of my team's cars)
   const car = lobbyCar(L, me);
   const drafted = !!(L.draft && L.draft.done);
   fill($("#lobby-car"), L.draft ? pool(L.draft, me.team).map((c) => [String(c), carName(c)]) : carOptions(), car);
   fill($("#lobby-skin"), skinOptions(car), (S.settings.skins || {})[carName(car)] ?? "0");
+  skinPic($("#lobby-skin-pic"), car, (S.settings.skins || {})[carName(car)] ?? "0");
   const locked = L.phase !== "lobby";
   const playing = isPlayer(me);
   $("#not-playing").hidden = me.team !== "none";
@@ -267,8 +303,10 @@ function renderLobby() {
   $("#hostbox").hidden = !amHost;
   if (amHost && S.hostSetup) {
     const H = S.hostSetup;
-    fill($("#h-arena"), C.arenas.map((a) => [String(a.id), a.name]), H.arena);
+    fill($("#h-arena"), arenasOf(L.build).map((a) => [String(a.id), a.name]), legacy ? legacyArena(H.arena) : H.arena);
     fill($("#h-score"), SCORES(), H.score);
+    fill($("#h-ball"), BALL_SPEEDS.concat(BALL_SPEEDS.includes(H.ballSpeed) ? [] : [H.ballSpeed]).map((p) => [String(p), ballName(p)]), String(H.ballSpeed || 100));
+    $("#h-arena").disabled = $("#h-score").disabled = locked; // the ball speed stays changeable during the match
     document.querySelectorAll(".steam-only").forEach((e) => (e.hidden = legacy));
     for (const team of ["blue", "red"]) {
       $(`#h-${team}-bots`).textContent = L.teams[team].bots + (H[team].bots > L.teams[team].bots ? ` (${H[team].bots})` : "");
@@ -307,12 +345,24 @@ function slotsHtml(L, team, me, amHost) {
   const H = S.hostSetup;
   const legacy = isLegacy(L.build);
   const drafting = L.draft && !L.draft.done;
+  const swapper = swapPick && L.members.find((m) => m.id === swapPick);
+  const canSwap = amHost && canSwapTeams(L);
+  const swapBtn = (m) => {
+    if (!canSwap) return "";
+    if (m.id === swapPick) return `<button class="sw" data-swap-cancel="1">${t("swap_cancel")}</button>`;
+    if (swapper) return swapper.team !== m.team ? `<button class="sw primary" data-swap-with="${esc(m.id)}">${t("swap_with")}</button>` : "";
+    return `<button class="sw" title="${esc(t("swap_title"))}" data-swap-pick="${esc(m.id)}">${t("swap_pick")}</button>`;
+  };
+  // The host moving a player here: on the first bot or open seat of the other team.
+  let moveShown = !(canSwap && swapper && swapper.team !== team && humans.length < 4);
+  const moveBtn = () => (moveShown ? "" : ((moveShown = true), `<button class="sw primary" data-move-to="${team}">${t("move_here")}</button>`));
   const out = humans.map((m) => `
-    <div class="slot${m.id === L.me ? " me" : ""}">
+    <div class="slot${m.id === L.me ? " me" : ""}${m.id === swapPick ? " swapping" : ""}">
       <div class="who"><div class="name">${esc(m.name)}${m.id === L.me ? ` <span class='hint'>${t("you_tag")}</span>` : ""}</div>
         <div class="car">${legacy ? t("picks_in_game") : drafting ? t("drafting") : esc(carName(m.car)) + (m.skin && m.skin !== "0" ? " · " + esc(skinName(m.car, m.skin)) : "")}</div></div>
       ${m.host ? `<span class="tag host">${t("tag_host")}</span>` : ""}
       ${m.ready ? `<span class="tag ready">${t("tag_ready")}</span>` : L.phase === "lobby" ? `<span class="tag">${t("tag_not_ready")}</span>` : ""}
+      ${swapBtn(m)}
       ${amHost && !m.host && L.phase === "lobby" ? `<button class="x" title="${t("remove_title")}" data-kick="${esc(m.id)}">✕</button>` : ""}
     </div>`);
   const left = botPool(L, team);
@@ -324,10 +374,28 @@ function slotsHtml(L, team, me, amHost) {
           .map(([v, text]) => `<option value="${esc(v)}"${v === String(car) ? " selected" : ""}>${esc(text)}</option>`).join("")}</select>`
       : "";
     out.push(`<div class="slot bot"><div class="who"><div class="name">${t("bot")}</div>
-      <div class="car">${esc(diffName(T.difficulty))}${carSel || legacy || !car ? "" : " · " + esc(car === "random" ? t("random_car") : carName(car))}</div></div>${carSel}</div>`);
+      <div class="car">${esc(diffName(T.difficulty))}${carSel || legacy || !car ? "" : " · " + esc(car === "random" ? t("random_car") : carName(car))}</div></div>${carSel}${moveBtn()}</div>`);
   }
-  for (let i = humans.length + T.bots; i < 4; i++) out.push(`<div class="slot open">${t("open_slot")}</div>`);
+  for (let i = humans.length + T.bots; i < 4; i++) {
+    const move = moveBtn();
+    out.push(`<div class="slot open">${move || t("open_slot")}</div>`);
+  }
   return out.join("");
+}
+
+// The host can move players between teams until the draft starts.
+const canSwapTeams = (L) => L.phase === "lobby" && !L.draft;
+
+// ----- chat -----
+function renderChat(L) {
+  const log = $("#chat-log");
+  const lines = L.chat || [];
+  const html = lines.length ? lines.map((c) => c.sys
+    ? `<p class="sys">${esc(t("chat_" + c.text, c.name))}</p>`
+    : `<p><b class="${esc(c.team)}">${esc(c.name)}:</b> ${esc(c.text)}</p>`).join("") : `<p class="sys">${t("chat_empty")}</p>`;
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  paint(log, html);
+  if (atBottom) log.scrollTop = log.scrollHeight;
 }
 
 // ----- draft -----
@@ -397,11 +465,14 @@ function renderSettings() {
   if (document.activeElement !== name && name.value !== S.settings.name) name.value = S.settings.name;
   fill($("#s-car"), carOptions(), S.settings.car);
   fill($("#s-skin"), skinOptions(S.settings.car), mySkin());
+  skinPic($("#s-skin-pic"), S.settings.car, mySkin());
+  renderEmotes();
   const res = RESOLUTIONS.map(([w, h]) => [`${w}x${h}`, `${w} × ${h}`]);
   const cur = `${S.settings.width}x${S.settings.height}`;
   if (cur !== "0x0" && !res.some((r) => r[0] === cur)) res.push([cur, `${S.settings.width} × ${S.settings.height}`]);
   fill($("#s-res"), [["0x0", t("res_game")], ...res], cur);
   if (document.activeElement !== $("#s-full")) $("#s-full").checked = S.settings.fullscreen;
+  $("#s-nov").checked = !!S.settings.showNov;
   const busy = S.setupStatus === "running";
   paint($("#s-game"), `<p class="hint">${t("copies_hint")}</p>
     ${S.copies.map((c) => `<div class="copy">
@@ -409,12 +480,26 @@ function renderSettings() {
         <span class="${c.ready ? (c.needsUpdate ? "warn-t" : "ok-t") : "hint"}">${busy && S.setupBuild === c.build ? t("copy_setting_up")
           : c.ready ? t(c.needsUpdate ? "copy_old" : "copy_ready", esc(c.version)) : t("not_set_up")}</span></div>
       <p class="hint">${c.dir ? t("copy_from", esc(c.dir)) + (c.ready ? "<br>" : "") : c.ready ? "" : t("copy_not_found")}${c.ready ? t("copy_in", esc(c.instance)) : ""}</p>
+      ${c.build === "2017" && c.ready && !S.settings.showNov ? `<p class="hint">${t("nov_hidden")}</p>` : ""}
       ${c.dir && c.canSetup ? `<button data-setup-build="${esc(c.build)}" ${busy ? "disabled" : ""}>${c.ready ? t("update_game") : t("set_up")}</button>` : ""}
     </div>`).join("")}
     <div class="row">${S.canSetup ? `<button data-act="choose-game" ${busy ? "disabled" : ""}>${t("add_copy")}</button>` : ""}
     <button data-act="open-folder">${t("open_folder")}</button></div>`);
   paint($("#s-firewall"), `${S.firewall ? `<p class="ok-t">${t("firewall_in_place")}</p>` : ""}<p class="hint">${t("firewall_hint", S.gamePort, S.lobbyPort)}</p>
     <button data-act="firewall">${t("setup_firewall")}</button>`);
+}
+
+function renderEmotes() {
+  const el = $("#s-emotes");
+  if (!S.images) return paint(el, `<p class="hint">${S.gameReady ? t("pictures_making") : t("pictures_none")}</p>`);
+  const mine = myEmotes();
+  const img = (n) => `<img src="/img/emotes/${n}.png" alt="${n}" loading="lazy">`;
+  let html = `<p class="hint">${t("emotes_hint")}</p><div class="emote-slots">${mine.map((n, i) =>
+    `<button class="emote${i === emoteSlot ? " on" : ""}" data-emote-slot="${i}">${img(n)}</button>`).join("")}</div>`;
+  if (emoteSlot >= 0)
+    html += `<p class="hint">${t("emote_choose", emoteSlot + 1)}</p><div class="emote-grid">${Array.from({ length: S.emoteCount }, (_, n) =>
+      `<button class="emote${n === mine[emoteSlot] ? " cur" : ""}" data-emote-pick="${n}">${img(n)}</button>`).join("")}</div>`;
+  paint(el, html);
 }
 
 // Windows' open-file window (opened by the launcher) to pick HMM.exe in any copy of the game, then set up from it.
@@ -434,6 +519,18 @@ document.addEventListener("click", async (e) => {
   if (b.dataset.fill) { $("#join-address").value = b.dataset.fill; return; }
   if (b.dataset.team) return act("lobby/update", { team: b.dataset.team });
   if (b.dataset.kick) return act("host/kick", { id: b.dataset.kick });
+  if (b.dataset.emoteSlot) { const i = +b.dataset.emoteSlot; emoteSlot = emoteSlot === i ? -1 : i; return renderEmotes(); }
+  if (b.dataset.emotePick) {
+    const picks = myEmotes().slice();
+    picks[emoteSlot] = +b.dataset.emotePick;
+    emoteSlot = -1;
+    if (await act("settings", { emotes: picks })) toast(t("emote_saved"), true);
+    return;
+  }
+  if (b.dataset.swapPick) { swapPick = b.dataset.swapPick; toast(t("swap_hint"), true); return render(); }
+  if (b.dataset.swapCancel) { swapPick = null; return render(); }
+  if (b.dataset.swapWith) { const a = swapPick; swapPick = null; return act("host/swap", { a, b: b.dataset.swapWith }); }
+  if (b.dataset.moveTo) { const id = swapPick; swapPick = null; return act("host/move", { id, team: b.dataset.moveTo }); }
   if (b.dataset.setupBuild) return act("setup", { build: b.dataset.setupBuild });
   if (b.dataset.draftCar) return act("lobby/draft", { action: "select", car: b.dataset.draftCar });
   if (b.dataset.bots) {
@@ -457,7 +554,7 @@ document.addEventListener("click", async (e) => {
   switch (b.id) {
     case "refresh": return discover();
     case "open-lobby":
-      if (!S.hosting && !(await act("host/open", { build: $("#host-build").value || (S.builds || [])[0] }))) return;
+      if (!S.hosting && !(await act("host/open", { build: $("#host-build").value || hostBuilds()[0] }))) return;
       return show("lobby");
     case "leave": {
       const hosting = S.hosting;
@@ -494,6 +591,14 @@ $("#join-form").addEventListener("submit", (e) => {
   const a = $("#join-address").value.trim();
   if (a) join(a);
 });
+$("#chat-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  if (!(await act("lobby/chat", { text })) && !input.value) input.value = text; // not sent: keep it to retry
+});
 $("#quick-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const a = $("#quick-address").value.trim();
@@ -511,6 +616,7 @@ document.addEventListener("change", async (e) => {
   }
   switch (el.id) {
     case "lang": case "s-lang": return setLang(el.value, true);
+    case "host-build": S.settings.hostBuild = el.value; renderHost(); return act("settings", { hostBuild: el.value });
     case "lobby-car":
       if (S.lobby && S.lobby.draft) return act("lobby/update", { car: el.value }); // drafted: a lobby choice, not a setting
       return act("settings", { car: el.value });
@@ -530,6 +636,7 @@ document.addEventListener("change", async (e) => {
       return act("settings", { width: w, height: h });
     }
     case "s-full": return act("settings", { fullscreen: el.checked });
+    case "s-nov": return act("settings", { showNov: el.checked });
     case "h-spec": case "h-draft": case "h-bans": case "h-picks": case "h-dtime": {
       const H = structuredClone(S.hostSetup);
       H.spectators = $("#h-spec").checked;
@@ -547,11 +654,12 @@ document.addEventListener("change", async (e) => {
       const n = (team) => S.lobby.members.filter((m) => m.team === team).length;
       return act("lobby/update", { team: n("blue") <= n("red") ? "blue" : "red" });
     }
-    case "h-auto": case "h-arena": case "h-score": case "h-blue-diff": case "h-red-diff": {
+    case "h-auto": case "h-arena": case "h-score": case "h-ball": case "h-blue-diff": case "h-red-diff": {
       const H = structuredClone(S.hostSetup);
       H.autoStart = $("#h-auto").checked;
       H.arena = parseInt($("#h-arena").value, 10);
       H.score = parseInt($("#h-score").value, 10);
+      H.ballSpeed = parseInt($("#h-ball").value, 10);
       H.blue.difficulty = $("#h-blue-diff").value;
       H.red.difficulty = $("#h-red-diff").value;
       return act("host/configure", H);

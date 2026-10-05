@@ -23,10 +23,12 @@ namespace HmmRevive.Legacy
             HMMHub hub = GameHubBehaviour<HMMHub>.Hub;
             if (hub == null) return;
             MatchEnd.Tick(hub);
+            Ball.Tick(hub);
             GameState cur = hub.State != null ? hub.State.Current : null;
             if (cur is ServerGame) { if (_gameSince < 0f) _gameSince = Time.realtimeSinceStartup; }
             else _gameSince = -1f;
             if (Entry.ServerMode) BotsOnlyStart(hub, cur);
+            else Shots.Tick();
             if (Time.realtimeSinceStartup < _next) return;
             _next = Time.realtimeSinceStartup + 5f;
             try { Log.Info(Line(hub, cur)); }
@@ -70,7 +72,7 @@ namespace HmmRevive.Legacy
             {
                 var c = hub.Characters;
                 line += " stage=" + pick.Stage + " pickTime=" + c.PickTime.ToString("0.0") + " allConfirmed=" + c.AllConfirmed;
-#if !Y2016
+#if !Y2016 && !Y2017SEP
                 line += " botPicking=" + c.IsBotPicking;
 #endif
             }
@@ -79,7 +81,11 @@ namespace HmmRevive.Legacy
                 line += " | " + p.Name + (p.IsBot ? "(bot)" : "") + " " + p.Team + " car=" + p.CharacterId + " grid=" + p.GridIndex;
 #else
             foreach (var p in hub.Players.PlayersAndBots)
+#if Y2017SEP
+                line += " | " + p.Name + (p.IsBot ? "(bot)" : "") + " " + p.Team + " car=" + p.CharacterId + " grid=" + p.GridIndex
+#else
                 line += " | " + p.Name + (p.IsBot ? "(bot)" : "") + " " + p.Team + " car=" + p.PickedCharId + " grid=" + p.GridIndex
+#endif
                         + (p.IsBot ? "" : p.Connected ? "" : " (disconnected)");
 #endif
             return line;

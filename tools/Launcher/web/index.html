@@ -62,7 +62,7 @@
       <p class="hint" data-i18n="host_who"></p>
       <div id="host-checks"></div>
       <label id="host-build-row" hidden><span data-i18n="host_game"></span> <select id="host-build"></select></label>
-      <p class="banner warn" id="host-build-warn" data-i18n="legacy_experimental" hidden></p>
+      <p class="banner warn" id="host-build-warn" hidden></p>
       <button class="primary big" id="open-lobby"></button>
     </div>
   </section>
@@ -83,21 +83,36 @@
       <div class="team red"><div class="team-head"><h2 data-i18n="team_red"></h2><span id="switch-red"></span></div><div class="slots" id="slots-red"></div></div>
     </div>
     <div class="specs" id="specs" hidden></div>
-    <div class="lobby-bottom">
+    <div class="lobby-bottom" id="lobby-bottom">
       <div class="panel mine">
         <h2 data-i18n="you_title"></h2>
         <p class="hint" id="not-playing" data-i18n="not_playing_hint" hidden></p>
         <p class="hint" id="spectating" data-i18n="spec_hint" hidden></p>
         <p class="hint" id="drafted-car" data-i18n="drafted_car_hint" hidden></p>
-        <label class="player-only"><span data-i18n="car"></span> <select id="lobby-car"></select></label>
-        <label class="player-only"><span data-i18n="skin"></span> <select id="lobby-skin"></select></label>
+        <div class="pick-row player-only">
+          <div class="pick-fields">
+            <label><span data-i18n="car"></span> <select id="lobby-car"></select></label>
+            <label><span data-i18n="skin"></span> <select id="lobby-skin"></select></label>
+          </div>
+          <img class="skin-pic" id="lobby-skin-pic" alt="" hidden>
+        </div>
         <p class="hint" id="legacy-pick" data-i18n="legacy_pick_hint" hidden></p>
         <button class="ready big" id="ready"></button>
         <button class="ghost" id="relaunch" data-i18n="start_again" hidden></button>
       </div>
+      <div class="panel chat">
+        <h2 data-i18n="chat_title"></h2>
+        <div class="chat-log" id="chat-log"></div>
+        <form class="row" id="chat-form">
+          <input id="chat-input" maxlength="200" data-i18n-ph="chat_ph" autocomplete="off">
+          <button type="submit" data-i18n="chat_send"></button>
+        </form>
+      </div>
       <div class="panel hostbox" id="hostbox" hidden>
         <h2 data-i18n="match_settings"></h2>
-        <label class="steam-only"><span data-i18n="arena"></span> <select id="h-arena"></select></label>
+        <label><span data-i18n="arena"></span> <select id="h-arena"></select></label>
+        <label><span data-i18n="ball_speed"></span> <select id="h-ball"></select></label>
+        <p class="hint" id="h-ball-hint" data-i18n="ball_speed_hint"></p>
         <label class="steam-only"><span data-i18n="points_to_win"></span> <select id="h-score"></select></label>
         <div class="bots">
           <div><span class="blue-t" data-i18n="blue_bots"></span> <span class="stepper"><button data-bots="blue:-1">−</button><b id="h-blue-bots"></b><button data-bots="blue:1">+</button></span>
@@ -136,9 +151,16 @@
         <h2 data-i18n="player"></h2>
         <label><span data-i18n="name"></span> <input id="s-name" maxlength="16" spellcheck="false" autocomplete="off"></label>
         <p class="hint" data-i18n="name_hint"></p>
-        <label><span data-i18n="car"></span> <select id="s-car"></select></label>
-        <label><span data-i18n="skin"></span> <select id="s-skin"></select></label>
+        <div class="pick-row">
+          <div class="pick-fields">
+            <label><span data-i18n="car"></span> <select id="s-car"></select></label>
+            <label><span data-i18n="skin"></span> <select id="s-skin"></select></label>
+          </div>
+          <img class="skin-pic" id="s-skin-pic" alt="" hidden>
+        </div>
         <p class="hint" data-i18n="skin_hint"></p>
+        <h2 data-i18n="emotes_title"></h2>
+        <div id="s-emotes"></div>
         <label><span data-i18n="language"></span> <select id="s-lang">
           <option value="en">English</option>
           <option value="pt">Português (Brasil)</option>
@@ -150,6 +172,7 @@
         <label class="check"><input type="checkbox" id="s-full"> <span data-i18n="fullscreen"></span></label>
         <h2 data-i18n="game_copies"></h2>
         <div id="s-game"></div>
+        <label class="check"><input type="checkbox" id="s-nov"> <span data-i18n="show_nov"></span></label>
         <h2 data-i18n="hosting"></h2>
         <div id="s-firewall"></div>
       </div>

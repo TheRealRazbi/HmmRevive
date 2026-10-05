@@ -9,7 +9,7 @@ namespace HmmRevive.Launcher
     /// <summary>
     /// Game builds the launcher can run. The current (Steam) build is "steam"; a supported older build has its own id,
     /// mod (kit mod\&lt;id&gt;\), patched copy (instance-&lt;id&gt;\) and lobby rules (the game's own pick screen: no car or skin in
-    /// the lobby, one arena). A copy is recognized by the sha256 of its HMM_Data\Managed\Assembly-CSharp-firstpass.dll.
+    /// the lobby, the build's two arenas). A copy is recognized by the sha256 of its HMM_Data\Managed\Assembly-CSharp-firstpass.dll.
     /// Keep the table in sync with tools/Patcher/Legacy.cs.
     /// </summary>
     public static class Builds
@@ -19,14 +19,16 @@ namespace HmmRevive.Launcher
         private static readonly Dictionary<string, string> Known = new Dictionary<string, string>
         {
             ["0c5527141b81820e"] = "2017",
+            ["6b253add011d2318"] = "2017sep", // September 2017
             ["1c5bd4c1219a9229"] = Unsupported, // planned
         };
 
         /// <summary>Old builds this launcher supports, in the order the page lists them.</summary>
-        public static readonly string[] Legacy = { "2017" };
+        public static readonly string[] Legacy = { "2017sep", "2017" }; // Sep first: the one players use
 
         /// <summary>English name, used in messages from the lobby (the page has its own translated names).</summary>
-        public static string Label(string build) => build == "2017" ? "Heavy Metal Machines (Nov 2017)" : "Heavy Metal Machines (Steam version)";
+        public static string Label(string build) => build == "2017" ? "Heavy Metal Machines (Nov 2017)" : build == "2017sep" ? "Heavy Metal Machines (Sep 2017)"
+            : "Heavy Metal Machines (Steam version)";
 
         public static bool IsLegacy(string build) => build != null && build != Steam;
 

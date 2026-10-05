@@ -62,7 +62,10 @@ namespace HmmRevive
             _next = Time.unscaledTime + 1f;
             Entry.HideOwnWindows(); // Unity re-shows the blank -batchmode window after startup
             UpgradeDump.Tick(GameHubBehaviour.Hub);
+            Emotes.Tick(GameHubBehaviour.Hub);
+            ImageDump.Tick(GameHubBehaviour.Hub);
             HealScan.Tick(GameHubBehaviour.Hub);
+            BallSpeed.Tick(GameHubBehaviour.Hub);
             // Client round-trip time to the server (Lidgren average), every 10 s while connected.
             if (++_pingTick % 10 == 0 && GameHubBehaviour.Hub?.Net is NetworkClient pc && pc.IsConnected())
                 Log.Info($"PING rtt={pc.GetPing():F0}ms");

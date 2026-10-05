@@ -194,6 +194,30 @@ static class Program
         SkipIf(Target("HeavyMetalMachines.HMMChat.ChatService", "ReceiveMessage"), Hook("HmmRevive.CarSwap", "ServerChat"), null, 0, 2);
         SkipIf(Target("HeavyMetalMachines.HMMChat.ChatService", "ClientReceiveMessage"), Hook("HmmRevive.CarSwap", "ClientChat"), null, 0, 2);
 
+        // Spectators may chat (Hooks.SpectatorChat): the game only allows it in custom matches. Client: the "is spectating"
+        // check in ClientSendMessage; server: IsValidChatSender drops narrators' messages.
+        var clientSend = Target("HeavyMetalMachines.HMMChat.ChatService", "ClientSendMessage");
+        var spectating = clientSend.Body.Instructions.Single(i => i.Operand is MethodReference mr && mr.Name == "get_IsSpectating");
+        spectating.Operand = Hook("HmmRevive.Hooks", "SpectatorChatBlocked");
+        Console.WriteLine("  redirect -> ChatService::ClientSendMessage IsSpectating -> SpectatorChatBlocked");
+        SkipIf(Target("HeavyMetalMachines.HMMChat.ChatService", "IsValidChatSender"), Hook("HmmRevive.Hooks", "AnyoneMayChat"), OpCodes.Ldc_I4_1);
+
+        // Ball speed (mod/HmmRevive/BallSpeed.cs): drag of the ball / k, release velocity x k, impulses on a free ball x k.
+        var applyDrag = Target("HeavyMetalMachines.Combat.CombatMovement", "ApplyDrag");
+        var getDrag = applyDrag.Body.Instructions.Single(i => i.Operand is MethodReference mr && mr.Name == "GetDrag");
+        var dil = applyDrag.Body.GetILProcessor();
+        var dragHook = dil.Create(OpCodes.Call, Hook("HmmRevive.BallSpeed", "Drag"));
+        dil.InsertAfter(getDrag, dragHook);
+        dil.InsertAfter(getDrag, dil.Create(OpCodes.Ldarg_0));
+        Console.WriteLine("  transform -> CombatMovement::ApplyDrag GetDrag -> BallSpeed.Drag");
+        Prologue(Target("HeavyMetalMachines.Combat.BombMovement", "MovementFixedUpdate"), il => new[] { il.Create(OpCodes.Ldarg_0), il.Create(OpCodes.Call, Hook("HmmRevive.BallSpeed", "BombFixedUpdate")) });
+        var impulse = module.GetType("HeavyMetalMachines.Combat.CombatController").Methods.Where(m => m.HasBody)
+            .SelectMany(m => m.Body.Instructions).Where(i => i.Operand is MethodReference mr && mr.Name == "Push" && mr.DeclaringType.Name == "CombatMovement").ToList();
+        if (impulse.Count != 1) throw new InvalidOperationException($"CombatController: expected 1 Movement.Push, found {impulse.Count}");
+        impulse[0].OpCode = OpCodes.Call;
+        impulse[0].Operand = Hook("HmmRevive.BallSpeed", "Push");
+        Console.WriteLine("  redirect -> CombatController impulse Movement.Push -> BallSpeed.Push");
+
         // Bot difficulty per team from the launcher (Hooks.BotDifficulty): if (HasBotDifficulty(team)) return BotDifficulty(team);
         var getDiff = Target("HeavyMetalMachines.BotAI.GetBotDifficulty", "Get");
         var getDiffBody = getDiff.Body.Instructions[0];

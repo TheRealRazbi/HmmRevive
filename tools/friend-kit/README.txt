@@ -7,8 +7,10 @@ What's new in this version: CHANGELOG.txt
 
 Everyone needs
   1. Heavy Metal Machines: installed from Steam (free), or a copy of the game folder anywhere on your PC.
-  2. A way to reach the host's PC: Tailscale (https://tailscale.com/download) or ZeroTier (https://www.zerotier.com),
-     installed and joined to the same network as the host. On the same home network you need neither.
+     Steam doesn't need to be installed or open: a copy of the game folder is enough.
+  2. A way to reach the host's PC: Radmin VPN (https://www.radmin-vpn.com, the easiest and most reliable so far),
+     Tailscale (https://tailscale.com/download) or ZeroTier (https://www.zerotier.com), installed and joined to the
+     same network as the host. On the same home network you need none of them.
 
 Start
   - Unzip this folder anywhere. The same drive as the game is best (no extra disk space used).
@@ -29,10 +31,15 @@ In a lobby
   - After the match everyone is back in the lobby: click Ready again for a rematch.
   - In a match, type /cars in chat to list cars and /car <name> to switch (happens while you are dead or between rounds).
     /skins lists your car's skins and /skin <number> changes it the same way.
+  - Ball speed: the host sets it in the lobby (0.5x to 3x, 1x = normal), also during the match, or types
+    /ballspeed 1.5 in the match chat. /ballspeed alone shows the current speed.
 
 HOST (one person, on a PC that stays on during the match)
   - In HMM-Revive.exe, go to Host and click "Set up firewall" once (Windows asks for admin). It lets players in on
-    the game port (UDP 9696) and the lobby port (TCP and UDP 9697), from Tailscale and local networks only.
+    the game port (UDP 9696) and the lobby port (TCP and UDP 9697), from Tailscale and local networks only
+    (Radmin VPN and ZeroTier count as local networks).
+  - Radmin VPN: Network > Create network (name + password), and give players the name and password; they use
+    Network > Join an existing network. Your lobby address is your 26.x.y.z address.
   - Tailscale: share your PC with each player: https://login.tailscale.com/admin/machines > the "..." menu of your PC >
     Share... > send each player their own invite link. Sharing shows them this PC only, none of your others.
     Then limit what they can reach to the game and lobby ports: https://login.tailscale.com/admin/acls > replace the

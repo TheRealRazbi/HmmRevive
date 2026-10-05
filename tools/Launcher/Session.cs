@@ -111,7 +111,7 @@ namespace HmmRevive.Launcher
             }
             catch (Exception e)
             {
-                error = e is WebException ? $"No lobby answered at {host}:{port}. Is the host's lobby open, and are you both on the same Tailscale/ZeroTier network?" : e.Message;
+                error = e is WebException ? $"No lobby answered at {host}:{port}. Is the host's lobby open, and are you both on the same Radmin VPN/Tailscale/ZeroTier network?" : e.Message;
                 return null;
             }
         }
@@ -151,6 +151,13 @@ namespace HmmRevive.Launcher
         public string DraftAct(string action, string car)
         {
             try { Post($"http://{Address}/lobby/draft", new Dictionary<string, object> { ["token"] = _token, ["action"] = action, ["car"] = car ?? "" }); return null; }
+            catch (Exception e) { return e.Message; }
+        }
+
+        /// <summary>A lobby chat message.</summary>
+        public string Say(string text)
+        {
+            try { Post($"http://{Address}/lobby/chat", new Dictionary<string, object> { ["token"] = _token, ["text"] = text ?? "" }); return null; }
             catch (Exception e) { return e.Message; }
         }
 
@@ -230,7 +237,7 @@ namespace HmmRevive.Launcher
         }
     }
 
-    /// <summary>Finding lobbies: broadcast on ZeroTier/LAN, ask every online Tailscale peer, and check recent hosts.</summary>
+    /// <summary>Finding lobbies: broadcast on Radmin VPN/ZeroTier/LAN, ask every online Tailscale peer, and check recent hosts.</summary>
     public static class Discovery
     {
         public const string Probe = "HMMREVIVE?";

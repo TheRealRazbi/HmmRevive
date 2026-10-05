@@ -13,6 +13,7 @@ static class Builds
     static readonly Dictionary<string, string> Known = new()
     {
         ["0c5527141b81820e"] = "2017",
+        ["6b253add011d2318"] = "2017sep", // September 2017 (experimental)
         ["1c5bd4c1219a9229"] = Unsupported, // 2016: planned
     };
 
@@ -37,7 +38,7 @@ static class Legacy
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern bool CreateHardLink(string newFile, string existingFile, IntPtr sa);
 
-    const string TargetDll = "Assembly-CSharp-firstpass.dll", ModDll = "HmmReviveLegacy.dll";
+    const string TargetDll = "Assembly-CSharp-firstpass.dll", ModDll = "HmmReviveLegacy.dll", SteamDll = "Steamworks.NET.dll";
 
     public static int Run(string build, string game, string inst, string modRoot)
     {
@@ -61,6 +62,7 @@ static class Legacy
             string rel = Path.GetRelativePath(game, src);
             if (rel.StartsWith("logs" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
             if (rel.Equals(Path.Combine(managedRel, TargetDll), StringComparison.OrdinalIgnoreCase)) continue;
+            if (rel.Equals(Path.Combine(managedRel, SteamDll), StringComparison.OrdinalIgnoreCase)) continue;
             string dst = Path.Combine(inst, rel);
             long declared = BundleLength(src);
             if (declared > 0)
@@ -106,7 +108,62 @@ static class Legacy
         }
 
         Patch(Path.Combine(game, managedRel, TargetDll), Path.Combine(managed, TargetDll), Path.Combine(managed, ModDll));
+        SteamOff(Path.Combine(game, managedRel, SteamDll), Path.Combine(managed, SteamDll));
         return 0;
+    }
+
+    /// <summary>
+    /// Old builds call Steam at startup on the client and the server (ClientAPI's SteamClient: SteamAPI.Init, then
+    /// SteamUser.GetSteamID on a null interface when Steam isn't running). Many players have these copies without Steam,
+    /// so every call into Steam's native code (CSteamworks.dll, sdkencryptedappticket.dll) is replaced with "no
+    /// Steam": arguments dropped, the default value returned (false, 0, null). Steam then never loads in the game, open
+    /// or not. Only friends, overlay, billing and groups use it, none of which exist offline.
+    /// </summary>
+    static void SteamOff(string original, string output)
+    {
+        if (!File.Exists(original)) return;
+        var resolver = new DefaultAssemblyResolver();
+        resolver.AddSearchDirectory(Path.GetDirectoryName(original));
+        using var asm = AssemblyDefinition.ReadAssembly(original, new ReaderParameters { AssemblyResolver = resolver, ReadingMode = ReadingMode.Immediate });
+        // InteropHelp.TestIfAvailableClient/GameServer throw "Steamworks is not initialized." before every call; without
+        // Steam that killed Hoplon's connection setup and the game hung on its splash screen.
+        foreach (var check in asm.MainModule.GetType("Steamworks.InteropHelp").Methods.Where(m => m.Name.StartsWith("TestIfAvailable") && m.HasBody))
+        {
+            check.Body.Instructions.Clear();
+            check.Body.ExceptionHandlers.Clear();
+            check.Body.GetILProcessor().Emit(OpCodes.Ret);
+        }
+        int calls = 0;
+        foreach (var type in asm.MainModule.GetTypes())
+            foreach (var m in type.Methods.Where(m => m.HasBody))
+            {
+                var steamCalls = m.Body.Instructions.Where(i => i.Operand is MethodDefinition d && d.IsPInvokeImpl
+                    && !d.PInvokeInfo.Module.Name.StartsWith("kernel32", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (steamCalls.Count == 0) continue;
+                var il = m.Body.GetILProcessor();
+                foreach (var call in steamCalls)
+                {
+                    var target = (MethodDefinition)call.Operand;
+                    // pop every argument (static P/Invokes: no this), then push the return type's default from a fresh
+                    // local. The call instruction becomes the first of these, so branches to it still land right.
+                    var seq = target.Parameters.Select(_ => il.Create(OpCodes.Pop)).ToList();
+                    if (target.ReturnType.MetadataType == MetadataType.Void) seq.Add(il.Create(OpCodes.Nop));
+                    else
+                    {
+                        var local = new VariableDefinition(target.ReturnType);
+                        m.Body.Variables.Add(local);
+                        m.Body.InitLocals = true;
+                        seq.Add(il.Create(OpCodes.Ldloc, local));
+                    }
+                    call.OpCode = seq[0].OpCode; call.Operand = seq[0].Operand;
+                    var last = call;
+                    foreach (var ins in seq.Skip(1)) { il.InsertAfter(last, ins); last = ins; }
+                    calls++;
+                }
+            }
+        if (File.Exists(output)) File.Delete(output); // never write through a hardlink
+        asm.Write(output);
+        Console.WriteLine($"patched {SteamDll}: {calls} Steam calls off (the game runs without Steam)");
     }
 
     /// <summary>
@@ -204,6 +261,17 @@ static class Legacy
             il.Create(OpCodes.Starg_S, fake.Parameters[0]),
         });
 
+        // Hoplon's native particle renderer (NativeRendering.dll) only knows Direct3D 9 and crashes in its per-frame update
+        // on anything else (tried -force-d3d11 / -force-opengl against the untextured cars: no crash with this, but the
+        // game's shaders are Direct3D 9 only, so everything turns magenta). Also logs the graphics API.
+        // if (NativeRenderOff()) return;
+        var late = module.GetType("NativePlugins")?.Methods.SingleOrDefault(m => m.Name == "LateUpdate" && m.HasBody);
+        if (late != null)
+        {
+            var lateBody = late.Body.Instructions[0];
+            Prologue(late, il => new[] { il.Create(OpCodes.Call, Hook("NativeRenderOff")), il.Create(OpCodes.Brfalse, lateBody), il.Create(OpCodes.Ret) });
+        }
+
         // Bot level per team (2017): if (HasBotDifficulty(team)) return BotDifficulty(team);
         var getDiff = module.GetType("HeavyMetalMachines.MatchPlayers")?.Methods.SingleOrDefault(m => m.Name == "GetBotDifficulty" && m.HasBody);
         if (getDiff != null)
@@ -218,6 +286,45 @@ static class Legacy
                 il.Create(OpCodes.Call, Hook("BotDifficulty")),
                 il.Create(OpCodes.Ret),
             });
+        }
+
+        // Ball speed and /ballspeed (mod/HmmRevive.Legacy/Ball.cs). Each piece is skipped, with a message, if a build lacks it.
+        MethodReference Ball(string name) =>
+            module.ImportReference(modAsm.MainModule.GetType("HmmRevive.Legacy.Ball").Methods.Single(m => m.Name == name));
+        var applyDrag = module.GetType("HeavyMetalMachines.Combat.CombatMovement")?.Methods.SingleOrDefault(m => m.Name == "ApplyDrag" && m.HasBody);
+        var getDrag = applyDrag?.Body.Instructions.SingleOrDefault(i => i.Operand is MethodReference mr && mr.Name == "GetDrag");
+        if (getDrag != null)
+        {
+            var dil = applyDrag.Body.GetILProcessor();
+            dil.InsertAfter(getDrag, dil.Create(OpCodes.Call, Ball("Drag")));
+            dil.InsertAfter(getDrag, dil.Create(OpCodes.Ldarg_0));
+            Console.WriteLine("  transform -> CombatMovement::ApplyDrag GetDrag -> Ball.Drag");
+        }
+        else Console.WriteLine("  (no CombatMovement.ApplyDrag/GetDrag: ball drag unchanged)");
+        var moveFixed = module.GetType("HeavyMetalMachines.Combat.CombatMovement")?.Methods.SingleOrDefault(m => m.Name == "MovementFixedUpdate" && m.HasBody);
+        if (moveFixed != null) Prologue(moveFixed, il => new[] { il.Create(OpCodes.Ldarg_0), il.Create(OpCodes.Call, Ball("FixedUpdate")) });
+        else Console.WriteLine("  (no CombatMovement.MovementFixedUpdate: ball release speed unchanged)");
+        var impulse = module.GetType("HeavyMetalMachines.Combat.CombatController")?.Methods.Where(m => m.HasBody)
+            .SelectMany(m => m.Body.Instructions).Where(i => i.Operand is MethodReference mr && mr.Name == "Push" && mr.DeclaringType.Name == "CombatMovement").ToList();
+        if (impulse != null && impulse.Count == 1)
+        {
+            impulse[0].OpCode = OpCodes.Call;
+            impulse[0].Operand = Ball("Push");
+            Console.WriteLine("  redirect -> CombatController impulse Movement.Push -> Ball.Push");
+        }
+        else Console.WriteLine($"  (CombatController has {impulse?.Count ?? 0} Movement.Push calls: ball impulses unchanged)");
+        foreach (var (name, hook) in new[] { ("ReceiveMessage", "ServerChat"), ("ClientReceiveMessage", "ClientChat") })
+        {
+            var chat = module.GetType("HeavyMetalMachines.HMMChat.ChatService")?.Methods.SingleOrDefault(m => m.Name == name && m.HasBody);
+            if (chat == null) { Console.WriteLine($"  (no ChatService.{name}: no /ballspeed)"); continue; }
+            var first = chat.Body.Instructions[0];
+            var cil = chat.Body.GetILProcessor();
+            cil.InsertBefore(first, cil.Create(OpCodes.Ldarg_0));
+            cil.InsertBefore(first, cil.Create(OpCodes.Ldarg_2));
+            cil.InsertBefore(first, cil.Create(OpCodes.Call, Ball(hook)));
+            cil.InsertBefore(first, cil.Create(OpCodes.Brfalse, first));
+            cil.InsertBefore(first, cil.Create(OpCodes.Ret));
+            Console.WriteLine($"  skip-if {hook} -> ChatService::{name}");
         }
 
         if (File.Exists(output)) File.Delete(output);
