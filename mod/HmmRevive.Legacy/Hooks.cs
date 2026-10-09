@@ -27,6 +27,24 @@ namespace HmmRevive.Legacy
             catch (Exception e) { Log.Error("rewire failed: " + e); }
         }
 
+        // Start of SplashController.Start, the first scene. A hidden windowed test client (--hmmrevive-hide-window) never
+        // has the focus, and Unity pauses an unfocused player unless it runs in the background.
+        public static void SplashStart()
+        {
+            try
+            {
+                Entry.Init();
+                if (Entry.HiddenWindow)
+                {
+                    Application.runInBackground = true;
+                    QualitySettings.vSyncCount = 0;
+                    Application.targetFrameRate = 20; // light on the GPU (the PC may be in use)
+                }
+                Entry.HideOwnWindows();
+            }
+            catch (Exception e) { Log.Error("SplashStart failed: " + e); }
+        }
+
         // Start of HMMHub.Start: the hub is initialized.
         public static void HubStart(HMMHub hub)
         {
@@ -35,6 +53,7 @@ namespace HmmRevive.Legacy
                 Entry.Init();
                 if (Entry.ServerMode) ServerBootstrap.ActivateDeferred(hub);
                 if (hub.GetComponent<Watch>() == null) hub.gameObject.AddComponent<Watch>();
+                if (Entry.DropperScan && hub.GetComponent<DropperScan>() == null) hub.gameObject.AddComponent<DropperScan>();
                 Entry.HideOwnWindows();
             }
             catch (Exception e) { Log.Error("HubStart failed: " + e); }

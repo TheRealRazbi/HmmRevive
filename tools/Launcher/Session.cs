@@ -111,7 +111,7 @@ namespace HmmRevive.Launcher
             }
             catch (Exception e)
             {
-                error = e is WebException ? $"No lobby answered at {host}:{port}. Is the host's lobby open, and are you both on the same Tailscale/ZeroTier network?" : e.Message;
+                error = e is WebException ? $"No lobby answered at {host}:{port}. Is the host's lobby open, and are you both on the same Radmin VPN/Tailscale/ZeroTier network?" : e.Message;
                 return null;
             }
         }
@@ -231,13 +231,13 @@ namespace HmmRevive.Launcher
                 _launchedMatch = match;
                 int score = d.Int("score");
                 string car = Drafted(d) ? me.Str("car") : null; // null: the car in our settings
-                try { Game.StartClient(d.Str("build") ?? Builds.Steam, GameIp, d.Int("gamePort", 9696), me.Str("team"), score == 3 ? 0 : score, car); }
+                try { Game.StartClient(d.Str("build") ?? Builds.Steam, GameIp, d.Int("gamePort", 9696), me.Str("team"), score == 3 ? 0 : score, car, HmmRevive.Launcher.Lobby.CleanCooldown(d.Str("cooldown")), Game.CleanCompactCarStats(d.Str("carStats")), d.Bool("wasd")); }
                 catch (Exception e) { Error = "Couldn't start the game: " + e.Message; }
             }
         }
     }
 
-    /// <summary>Finding lobbies: broadcast on ZeroTier/LAN, ask every online Tailscale peer, and check recent hosts.</summary>
+    /// <summary>Finding lobbies: broadcast on Radmin VPN/ZeroTier/LAN, ask every online Tailscale peer, and check recent hosts.</summary>
     public static class Discovery
     {
         public const string Probe = "HMMREVIVE?";

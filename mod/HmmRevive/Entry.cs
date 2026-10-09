@@ -52,6 +52,9 @@ namespace HmmRevive
         /// <summary>Test: log everything loaded in the match that can heal (--hmmrevive-scan-heal, HealScan.cs).</summary>
         public static bool ScanHeal { get; private set; }
 
+        /// <summary>Test: log every HP hit the lobby's car stats change (--hmmrevive-log-damage, CarStats.cs).</summary>
+        public static bool LogDamage { get; private set; }
+
         /// <summary>Chaos only picks from these car ids (--hmmrevive-chaos-cars=8,7), e.g. to repeat one swap pair. null = any car.</summary>
         public static int[] ChaosCars { get; private set; }
 
@@ -67,6 +70,10 @@ namespace HmmRevive
         public static float RepairPercentPerSecond { get; private set; } // 0 = flat RepairHpPerSecond
         public static float RepairHpPerSecond { get; private set; } = 100f;
         public static string RepairRate => RepairPercentPerSecond > 0f ? RepairPercentPerSecond + "% max HP/s" : RepairHpPerSecond + " HP/s";
+
+        /// <summary>Every car's ability cooldown in seconds (--hmmrevive-cooldown=0.1; server and clients, from the lobby's
+        /// match settings). 0 = the game's own. See Cooldowns.cs.</summary>
+        public static float Cooldown { get; private set; }
 
         /// <summary>Client test aid (--hmmrevive-shots=N): N off-screen pictures of the match, see TestShots.</summary>
         public static int Shots { get; private set; }
@@ -170,10 +177,16 @@ namespace HmmRevive
             if (Spectate) Car = Skin = Team = Emotes = null;
             string endQuit = Array.Find(args, a => a.StartsWith("--hmmrevive-end-quit=", StringComparison.OrdinalIgnoreCase));
             if (endQuit != null) EndQuitDelay = float.Parse(endQuit.Substring("--hmmrevive-end-quit=".Length), System.Globalization.CultureInfo.InvariantCulture);
+            string cooldown = Array.Find(args, a => a.StartsWith("--hmmrevive-cooldown=", StringComparison.OrdinalIgnoreCase));
+            float cd;
+            if (cooldown != null && float.TryParse(cooldown.Substring("--hmmrevive-cooldown=".Length).Trim('"', '\'', ' '),
+                    System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out cd) && cd > 0f)
+                Cooldown = cd;
             RedBotCars = ParseList(args, "--hmmrevive-bot-cars-red=");
             BluBotCars = ParseList(args, "--hmmrevive-bot-cars-blue=");
             Chaos = Array.Exists(args, a => a.Equals("--hmmrevive-chaos", StringComparison.OrdinalIgnoreCase));
             ScanHeal = Array.Exists(args, a => a.Equals("--hmmrevive-scan-heal", StringComparison.OrdinalIgnoreCase));
+            LogDamage = Array.Exists(args, a => a.Equals("--hmmrevive-log-damage", StringComparison.OrdinalIgnoreCase));
             string chaosCars = Array.Find(args, a => a.StartsWith("--hmmrevive-chaos-cars=", StringComparison.OrdinalIgnoreCase));
             if (chaosCars != null)
             {
@@ -204,7 +217,10 @@ namespace HmmRevive
             }
             RedBotDifficulty = ParseDifficulty(args, "--hmmrevive-difficulty-red=");
             BluBotDifficulty = ParseDifficulty(args, "--hmmrevive-difficulty-blue=");
+            string carStats = Array.Find(args, a => a.StartsWith("--hmmrevive-car-stats=", StringComparison.OrdinalIgnoreCase));
+            if (carStats != null) CarStats.Configure(carStats.Substring("--hmmrevive-car-stats=".Length).Trim('"', '\''));
             Mute = ServerMode || Array.Exists(args, a => a.Equals("--hmmrevive-mute", StringComparison.OrdinalIgnoreCase));
+            BallSpeed.Init(args);
             Application.logMessageReceived += (msg, stack, type) =>
             {
                 if (type == LogType.Exception) Log.Error("unity exception: " + msg + "\n" + stack);
@@ -212,7 +228,7 @@ namespace HmmRevive
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
             InstallTestCryptoKeys();
             HideOwnWindows();
-            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} Emotes={Emotes} Spectate={Spectate} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Repair={RepairDelay}s/{RepairRate} Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
+            Log.Info($"HmmRevive init. Version={Version} ServerMode={ServerMode} Headless={Headless} Mute={Mute} ScoreTarget={ScoreTarget} Car={Car} Skin={Skin} Team={Team} Emotes={Emotes} Spectate={Spectate} EndQuit={EndQuitDelay}s BotCars Red={Join(RedBotCars)} Blue={Join(BluBotCars)} Chaos={Chaos} Cooldown={(Cooldown > 0f ? Cooldown + "s" : "game")} Repair={RepairDelay}s/{RepairRate} Ball={BallSpeed.Describe()} Bots Red={RedBotDifficulty} Blue={BluBotDifficulty} args={string.Join(" ", args)}");
         }
     }
 

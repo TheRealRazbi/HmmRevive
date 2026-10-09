@@ -2,7 +2,46 @@
 
 Newest first. The version is shown on the first line of every kit window (setup, play, host).
 
-## 1.4 (preview, 2026-10-04)
+## 1.5 (2026-10-09)
+
+Preview. Thanks to AndreLuisOvidio and DantasB for the first two community contributions.
+
+- **Ability cooldowns** (by AndreLuisOvidio): the host can set every car's ability cooldown in the lobby's match
+  settings ("Ability cooldowns": 0.1 to 5 seconds, or the game's own). It applies to both weapons, the special and the
+  boost of every car, players and bots. Steam version.
+- **Car stats** (by DantasB): the host can change HP, move speed and damage, from 10% to 300%, for every car at once
+  (top row) or for single cars, in the lobby's match settings. Damage stays normal while a car holds the ball. Steam
+  version.
+- **Drive with WASD on the 2017 versions:** a host option in the lobby ("Drive with WASD"). The 2017 versions drive
+  with the mouse (hold the left button to go forward, the right one to reverse, the car turns towards the cursor).
+  Ticked, every player drives like in the Steam game: W/S for speed, A/D to steer.
+- **Ball droppers you can see on Metal God Arena (2017 versions):** the red and blue droppers that make you drop the
+  ball were only partly drawn, and some were invisible, so you could lose the ball on what looked like bare floor. Now
+  every dropper glows in its team's colour exactly where it is.
+- Everyone in a lobby needs HMM Revive 1.5.
+
+## 1.4 (2026-10-05)
+
+New since the 1.4 preview:
+
+- **No Steam needed.** A copy of the game folder (from a friend, a Google Drive, a depot download...) is enough: Steam
+  doesn't have to be installed or open, for the Steam version and the September/November 2017 versions alike. The 2017
+  versions used to hang on their splash screen without Steam; HMM Revive's copy of them no longer talks to Steam at all.
+- **Ball speed:** the host picks it in the lobby's match settings (0.5x to 3x, 1x = normal). Higher means the ball
+  flies faster when thrown or hit, and keeps rolling longer. The host can change it during the match too: in the lobby
+  page, or by typing `/ballspeed 1.5` in the match chat (`/ballspeed` alone shows the current speed to anyone).
+  Everyone in the match sees the change in the chat.
+- **The September 2017 version is no longer experimental**, and it has **two arenas** now: Temple of Sacrifice (the
+  one played so far) and Metal God Arena. The host picks the arena in the lobby, like on the Steam version. The
+  November 2017 version has the same two arenas.
+- **The November 2017 version stays experimental** and is hidden from the Host page unless you tick "Show the November
+  2017 version when hosting" in Settings > Game copies, so nobody picks it by accident.
+- **Radmin VPN** is now named next to Tailscale and ZeroTier (in the launcher and the READMEs): so far it's the easiest
+  and most reliable way to play together. The host's Radmin address (26.x.y.z) shows on the lobby screen.
+- The window to choose the game folder ("Add a game copy", "Choose game folder") now opens in front of the launcher
+  instead of behind it.
+
+The rest of 1.4 (from the preview):
 
 - **The host can swap players between teams**, also when both teams are full, to balance the teams by skill (like in
   the original game's custom matches). In the lobby, the host clicks "Swap…" on a player, then "⇄ Swap" on a player
@@ -16,9 +55,8 @@ Newest first. The version is shown on the first line of every kit window (setup,
 - **Skin pictures:** a picture of the skin next to the car and skin choice (lobby and Settings), so you can tell the
   skins apart. The first time the launcher starts after setup, it makes the pictures from your own game files (a hidden
   game window for a few seconds), so they always match your game.
-- **Heavy Metal Machines from September 2017 (experimental):** a second old version the launcher can set up and run,
-  same rules as the November 2017 one (game's own pick screen, one arena, no draft or spectators). Add it under
-  Settings > Game copies. Not ready for real matches yet.
+- **Heavy Metal Machines from September 2017:** a second old version the launcher can set up and run, same rules as
+  the November 2017 one (game's own pick screen, no draft or spectators). Add it under Settings > Game copies.
 - Everyone in a lobby needs HMM Revive 1.4.
 
 ## 1.3 (2026-10-03)

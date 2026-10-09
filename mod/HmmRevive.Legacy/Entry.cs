@@ -31,6 +31,15 @@ namespace HmmRevive.Legacy
         /// <summary>Client test aid (--hmmrevive-shots=N): N off-screen pictures of what the game shows, one every 8 s. See Shots.</summary>
         public static int Shots { get; private set; }
 
+        /// <summary>Client: drive with WASD, the game's Simulator mode (--hmmrevive-wasd, launcher setting). See Drive.</summary>
+        public static bool Wasd { get; private set; }
+
+        /// <summary>Client test aid (--hmmrevive-dropper-scan): log and photograph the ball droppers. See DropperScan.</summary>
+        public static bool DropperScan { get; private set; }
+
+        /// <summary>Client test aid (--hmmrevive-hide-window): a windowed client (so it renders) whose window stays hidden.</summary>
+        public static bool HiddenWindow { get; private set; }
+
         /// <summary>Client: join [Server] IP/Port from the main menu by itself (--hmmrevive-connect).</summary>
         public static bool Connect { get; private set; }
 
@@ -99,6 +108,9 @@ namespace HmmRevive.Legacy
             ServerMode = Flag(args, "--hmmrevive-server");
             Mute = ServerMode || Flag(args, "--hmmrevive-mute");
             Connect = Flag(args, "--hmmrevive-connect");
+            Wasd = Flag(args, "--hmmrevive-wasd");
+            HiddenWindow = Flag(args, "--hmmrevive-hide-window");
+            DropperScan = Flag(args, "--hmmrevive-dropper-scan");
             Shots = (int)Seconds(Arg(args, "--hmmrevive-shots="), 0);
             Team = (Arg(args, "--hmmrevive-team=") ?? "").ToLowerInvariant();
             if (Team != "red" && Team != "blue") Team = null;
@@ -112,6 +124,7 @@ namespace HmmRevive.Legacy
             RedBotDifficulty = Difficulty(Arg(args, "--hmmrevive-difficulty-red="));
             BluBotDifficulty = Difficulty(Arg(args, "--hmmrevive-difficulty-blue="));
 #endif
+            Ball.Init(args);
             var seen = new System.Collections.Generic.Dictionary<string, int>();
             Application.RegisterLogCallback((msg, stack, type) =>
             {
@@ -126,7 +139,7 @@ namespace HmmRevive.Legacy
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Error("unhandled: " + e.ExceptionObject);
             HideOwnWindows();
             Log.Info("HmmRevive init. Version=" + Version + " Build=" + Build + " ServerMode=" + ServerMode + " Mute=" + Mute
-                     + " Connect=" + Connect + " Team=" + Team + " EndQuit=" + EndQuitDelay + "s ScoreTarget=" + ScoreTarget
+                     + " Connect=" + Connect + " Wasd=" + Wasd + " Team=" + Team + " EndQuit=" + EndQuitDelay + "s ScoreTarget=" + ScoreTarget + " Ball=" + Ball.Describe()
 #if !Y2016 && !Y2017SEP
                      + " Bots Red=" + RedBotDifficulty + " Blue=" + BluBotDifficulty
 #endif
@@ -141,7 +154,7 @@ namespace HmmRevive.Legacy
 
         public static void HideOwnWindows()
         {
-            if (ServerMode || !Flag(Environment.GetCommandLineArgs(), "-batchmode")) return;
+            if (ServerMode || !(Flag(Environment.GetCommandLineArgs(), "-batchmode") || HiddenWindow)) return;
             try
             {
                 uint self = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;

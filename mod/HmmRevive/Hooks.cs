@@ -10,6 +10,19 @@ namespace HmmRevive
     /// </summary>
     public static class Hooks
     {
+        // Start of StartCooldownBlock.GetCooldown(baseCooldown, context): baseCooldown = ScriptCooldown(baseCooldown, context).
+        public static float ScriptCooldown(float cooldown, object context) => Cooldowns.ScriptCooldown(cooldown, context);
+
+        // The lobby's car stats (CarStats.cs). CarMovement.MovementFixedUpdate, before the acceleration is stored in _lastAccel:
+        // accel = ScaleAcceleration(accel, this)
+        public static float ScaleAcceleration(float accel, object movement) => CarStats.ScaleAcceleration(accel, movement);
+
+        // CombatData.HPMax: "+ _levelHPMax" -> "+ LevelHpMax(_levelHPMax, this)"
+        public static float LevelHpMax(float level, object combatData) => CarStats.LevelHpMax(level, combatData);
+
+        // Start of CombatController.ApplyInstant(mod, causer, eventId), after mod.Amount: amount = ScaleDamage(amount, mod, causer)
+        public static float ScaleDamage(float amount, object mod, object causer) => CarStats.ScaleDamage(amount, mod, causer);
+
         // RedirectProjectContext.FindProjectContext(string sceneName): sceneName = MapProjectContextScene(sceneName)
         public static string MapProjectContextScene(string sceneName)
         {

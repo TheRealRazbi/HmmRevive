@@ -7,8 +7,10 @@ Novidades desta versão: CHANGELOG.txt (em inglês)
 
 Todo mundo precisa de
   1. Heavy Metal Machines: instalado pela Steam (grátis), ou uma cópia da pasta do jogo em qualquer lugar do PC.
-  2. Um jeito de chegar no PC do host: Tailscale (https://tailscale.com/download) ou ZeroTier (https://www.zerotier.com),
-     instalado e na mesma rede do host. Na mesma rede de casa não precisa de nenhum dos dois.
+     A Steam não precisa estar instalada nem aberta: uma cópia da pasta do jogo basta.
+  2. Um jeito de chegar no PC do host: Radmin VPN (https://www.radmin-vpn.com, o mais fácil e estável até agora),
+     Tailscale (https://tailscale.com/download) ou ZeroTier (https://www.zerotier.com), instalado e na mesma rede
+     do host. Na mesma rede de casa não precisa de nenhum deles.
 
 Começando
   - Descompacte esta pasta em qualquer lugar. De preferência no mesmo disco do jogo (não gasta espaço extra).
@@ -30,10 +32,15 @@ Na sala
   - Na partida, digite /cars no chat para ver os carros e /car <nome> para trocar de carro
     (a troca acontece enquanto você está morto ou entre os rounds). /skins mostra as skins do seu carro e
     /skin <número> troca a skin do mesmo jeito.
+  - Velocidade da bola: o host escolhe na sala (0.5x a 3x, 1x = normal), também durante a partida, ou digita
+    /ballspeed 1.5 no chat da partida. /ballspeed sozinho mostra a velocidade atual.
 
 HOST (uma pessoa, num PC que fica ligado durante a partida)
   - No HMM-Revive.exe, vá em Host e clique em "Set up firewall" uma vez (o Windows pede administrador). Isso libera
-    a porta do jogo (UDP 9696) e da sala (TCP e UDP 9697), só para o Tailscale e redes locais.
+    a porta do jogo (UDP 9696) e da sala (TCP e UDP 9697), só para o Tailscale e redes locais
+    (Radmin VPN e ZeroTier contam como redes locais).
+  - Radmin VPN: Rede > Criar rede (nome + senha), e passe o nome e a senha para os jogadores; eles usam
+    Rede > Entrar numa rede existente. O endereço da sua sala é o seu endereço 26.x.y.z.
   - Tailscale: compartilhe seu PC com cada jogador: https://login.tailscale.com/admin/machines > menu "..." do seu PC >
     Share... > mande um link de convite para cada jogador. Eles veem só este PC, nenhum outro seu.
     Depois deixe eles acessarem só as portas do jogo e da sala: https://login.tailscale.com/admin/acls > troque a

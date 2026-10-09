@@ -8,20 +8,21 @@ O HMM Revive traz ele de volta para partidas privadas e gratuitas entre amigos:
 - um **servidor de partida** sem janela, montado a partir do próprio código de servidor que veio no jogo (a cena do
   servidor nunca foi distribuída, então o mod reconstrói ela na hora), com bots;
 - os **jogadores conectam direto** nesse servidor (pelo modo de conexão direta de desenvolvedor que já existe no
-  jogo), por exemplo pelo [Tailscale](https://tailscale.com).
+  jogo), por exemplo pelo [Radmin VPN](https://www.radmin-vpn.com) ou [Tailscale](https://tailscale.com).
 
 Extras: uma janela de launcher (em português e inglês) para abrir uma sala, achar e entrar em salas na sua rede,
 escolher time, carro e skin, e jogar a revanche; escolha seu carro e sua skin ao entrar, troque os dois no meio da partida (`/car` e `/skin` no chat),
-quantidade, dificuldade e carros dos bots por time, reparo fora de combate.
+quantidade, dificuldade e carros dos bots por time, reparo fora de combate, velocidade da bola (também no meio da
+partida: `/ballspeed 1.5`).
 
 > Projeto de fã não oficial, sem ligação com a Hoplon e sem aprovação dela. **Nenhum código ou arquivo do jogo da
-> Hoplon** está neste repositório ou no kit: o patcher trabalha numa cópia da *sua própria* instalação da Steam, e a
-> instalação da Steam nunca é alterada.
+> Hoplon** está neste repositório ou no kit: o patcher trabalha numa cópia da *sua própria* pasta do jogo (da Steam
+> ou não), e essa pasta nunca é alterada.
 
 ## Como jogar
 
 Você precisa de Windows e do Heavy Metal Machines (build `Release.15.00.250`): da sua biblioteca da Steam, ou uma cópia
-da pasta do jogo em qualquer lugar do PC.
+da pasta do jogo em qualquer lugar do PC. A Steam não precisa estar instalada nem aberta.
 
 1. Baixe o `HMM-Revive-friend-kit-<versão>.zip` em [Releases](../../releases).
 2. Descompacte numa pasta cujo caminho **não tenha acentos nem letras especiais**, por exemplo `C:\HMM-Revive`
@@ -31,7 +32,8 @@ da pasta do jogo em qualquer lugar do PC.
 4. Uma pessoa clica em **Hospedar** e abre uma sala; os outros veem a sala em **Jogar** (ou digitam o endereço do host)
    e entram. Cada um escolhe time, carro e skin e clica em Pronto, e a partida começa. Depois dela, todo mundo volta
    para a sala para a revanche.
-   Os jogadores chegam no host pelo [Tailscale](https://tailscale.com) ou [ZeroTier](https://www.zerotier.com) (ou pela
+   Os jogadores chegam no host pelo [Radmin VPN](https://www.radmin-vpn.com) (o mais fácil e estável até agora),
+   [Tailscale](https://tailscale.com) ou [ZeroTier](https://www.zerotier.com) (ou pela
    mesma rede de casa). O `host.bat` e o `play.bat` continuam funcionando.
 
 O passo a passo completo, incluindo como hospedar pelo Tailscale, está no kit e aqui:
@@ -41,8 +43,8 @@ Na partida, digite `/cars` no chat para ver os carros e `/car <nome>` para troca
 para a skin (a troca acontece enquanto você está morto ou entre os rounds).
 
 **Segurança:** o servidor de partida e a sala não têm autenticação de verdade. Qualquer pessoa que alcance as portas
-deles (UDP 9696 para o jogo, TCP/UDP 9697 para a sala) pode entrar enquanto estão abertos. Compartilhe pelo Tailscale
-ou ZeroTier (o LEIA-ME do kit mostra como liberar só essas portas para quem você convidou no Tailscale) e feche a sala
+deles (UDP 9696 para o jogo, TCP/UDP 9697 para a sala) pode entrar enquanto estão abertos. Compartilhe pelo Radmin VPN,
+Tailscale ou ZeroTier (o LEIA-ME do kit mostra como liberar só essas portas para quem você convidou no Tailscale) e feche a sala
 depois de jogar.
 
 ## Limitações conhecidas

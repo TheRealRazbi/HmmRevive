@@ -208,14 +208,15 @@ namespace HmmRevive
             string[] words = msg.Trim().Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (words.Length == 0) return false;
             string cmd = words[0].ToLowerInvariant();
-            if (cmd != "/car" && cmd != "/cars" && cmd != "/skin" && cmd != "/skins") return false;
+            if (cmd != "/car" && cmd != "/cars" && cmd != "/skin" && cmd != "/skins" && cmd != "/ballspeed") return false;
             try
             {
                 var chat = (ChatService)chatService;
                 PlayerData player = GameHubBehaviour.Hub.Players.GetPlayerByAddress(chat.Sender);
                 if (player == null || player.IsNarrator) return true;
                 string arg = words.Length > 1 ? words[1].Trim() : "";
-                if (cmd == "/skins" || (cmd == "/skin" && arg.Length == 0)) ListSkins(chat, player);
+                if (cmd == "/ballspeed") BallSpeed.Chat(chat, player, arg);
+                else if (cmd == "/skins" || (cmd == "/skin" && arg.Length == 0)) ListSkins(chat, player);
                 else if (cmd == "/skin") RequestSkin(chat, player, arg);
                 else if (cmd == "/cars" || arg.Length == 0) ListCars(chat, player);
                 else RequestCar(chat, player, arg);
@@ -346,10 +347,10 @@ namespace HmmRevive
             return GameHubBehaviour.Hub.InventoryColletion.AllCharactersByCharacterId.TryGetValue(charId, out item) ? CarChoice.DisplayName(item) : "#" + charId;
         }
 
-        private static void Say(ChatService chat, PlayerData to, string text) =>
+        internal static void Say(ChatService chat, PlayerData to, string text) =>
             chat.DispatchReliable(to.PlayerAddress).ClientReceiveMessage(false, Marker + "say:" + text, 0);
 
-        private static void SayAll(ChatService chat, string text) =>
+        internal static void SayAll(ChatService chat, string text) =>
             chat.DispatchReliable(GameHubBehaviour.Hub.AddressGroups.GetGroup(0)).ClientReceiveMessage(false, Marker + "say:" + text, 0);
 
         // Client, start of ChatService.ClientReceiveMessage(group, msg, address): true = ours, don't show it as chat.
@@ -400,6 +401,7 @@ namespace HmmRevive
             {
                 if (Entry.ServerMode) ServerUpdate(hub);
                 else ClientUpdate(hub);
+                Cooldowns.Enforce(hub); // the lobby's ability cooldown (Cooldowns.cs)
             }
             catch (Exception e)
             {

@@ -265,6 +265,8 @@ namespace HmmRevive.Launcher
             if (d.ContainsKey("width")) Settings.Data["width"] = Math.Max(0, d.Int("width"));
             if (d.ContainsKey("height")) Settings.Data["height"] = Math.Max(0, d.Int("height"));
             if (d.ContainsKey("fullscreen")) Settings.Data["fullscreen"] = d.Bool("fullscreen", true);
+            if (Builds.Legacy.Contains(d.Str("hostBuild")) || d.Str("hostBuild") == Builds.Steam) Settings.Data["hostBuild"] = d.Str("hostBuild");
+            if (d.ContainsKey("showNov")) Settings.Data["showNov"] = d.Bool("showNov", false); // Nov 2017 build in the Host list
             if (d.Str("lang") == "en" || d.Str("lang") == "pt") Settings.Data["lang"] = d.Str("lang"); // page language
             Settings.Save();
             _session?.SendChoices(null); // car/skin changes show in the lobby

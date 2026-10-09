@@ -62,7 +62,7 @@
       <p class="hint" data-i18n="host_who"></p>
       <div id="host-checks"></div>
       <label id="host-build-row" hidden><span data-i18n="host_game"></span> <select id="host-build"></select></label>
-      <p class="banner warn" id="host-build-warn" data-i18n="legacy_experimental" hidden></p>
+      <p class="banner warn" id="host-build-warn" hidden></p>
       <button class="primary big" id="open-lobby"></button>
     </div>
   </section>
@@ -110,8 +110,18 @@
       </div>
       <div class="panel hostbox" id="hostbox" hidden>
         <h2 data-i18n="match_settings"></h2>
-        <label class="steam-only"><span data-i18n="arena"></span> <select id="h-arena"></select></label>
+        <label><span data-i18n="arena"></span> <select id="h-arena"></select></label>
+        <label><span data-i18n="ball_speed"></span> <select id="h-ball"></select></label>
+        <p class="hint" id="h-ball-hint" data-i18n="ball_speed_hint"></p>
+        <label class="check legacy-only"><input type="checkbox" id="h-wasd"> <span data-i18n="wasd_option"></span></label>
+        <p class="hint legacy-only" data-i18n="wasd_hint"></p>
         <label class="steam-only"><span data-i18n="points_to_win"></span> <select id="h-score"></select></label>
+        <label class="steam-only"><span data-i18n="ability_cooldown"></span> <select id="h-cd"></select></label>
+        <div class="car-stats steam-only" id="h-stats-box">
+          <h3 data-i18n="car_stats_title"></h3>
+          <p class="hint" data-i18n="car_stats_hint"></p>
+          <div class="car-stat-list-wrap"><div class="car-stat-list" id="h-stat-list"></div></div>
+        </div>
         <div class="bots">
           <div><span class="blue-t" data-i18n="blue_bots"></span> <span class="stepper"><button data-bots="blue:-1">−</button><b id="h-blue-bots"></b><button data-bots="blue:1">+</button></span>
             <select id="h-blue-diff"></select></div>
@@ -170,6 +180,7 @@
         <label class="check"><input type="checkbox" id="s-full"> <span data-i18n="fullscreen"></span></label>
         <h2 data-i18n="game_copies"></h2>
         <div id="s-game"></div>
+        <label class="check"><input type="checkbox" id="s-nov"> <span data-i18n="show_nov"></span></label>
         <h2 data-i18n="hosting"></h2>
         <div id="s-firewall"></div>
       </div>
