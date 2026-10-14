@@ -169,11 +169,23 @@ namespace HmmRevive.Launcher
             return S.DeserializeObject(json) as Dictionary<string, object> ?? new Dictionary<string, object>();
         }
 
+        public static List<object> ReadArray(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new List<object>();
+            object o = S.DeserializeObject(json);
+            if (o is object[] a) return new List<object>(a);
+            if (o is List<object> l) return l;
+            return new List<object>();
+        }
+
         public static string Str(this Dictionary<string, object> d, string key, string fallback = null) =>
             d != null && d.TryGetValue(key, out object v) && v != null ? Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) : fallback;
 
         public static int Int(this Dictionary<string, object> d, string key, int fallback = 0) =>
             d != null && d.TryGetValue(key, out object v) && v != null && int.TryParse(Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture), out int i) ? i : fallback;
+
+        public static double Double(this Dictionary<string, object> d, string key, double fallback = 0) =>
+            d != null && d.TryGetValue(key, out object v) && v != null && double.TryParse(Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double res) ? res : fallback;
 
         public static bool Bool(this Dictionary<string, object> d, string key, bool fallback = false) =>
             d != null && d.TryGetValue(key, out object v) && v is bool b ? b : fallback;

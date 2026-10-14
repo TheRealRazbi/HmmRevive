@@ -375,6 +375,21 @@ function render() {
 
 function renderBanners() {
   const b = [];
+  if (S.updateStatus === "available") {
+    const notesHtml = S.updateNotes ? `<details><summary>${t("update_changelog")}</summary><pre class="changelog">${esc(S.updateNotes)}</pre></details>` : "";
+    const btns = [[t("update_now"), "update-apply"]];
+    if (S.updateUrl) btns.push([t("update_page"), "update-page"]);
+    b.push(["info", t("update_available", esc(S.updateVersion)) + notesHtml, btns]);
+  } else if (S.updateStatus === "downloading") {
+    b.push(["info", t("update_downloading", S.updatePercent), []]);
+  } else if (S.updateStatus === "applying") {
+    b.push(["info", t("update_applying"), []]);
+  } else if (S.updateStatus === "done") {
+    b.push(["info", t("update_done"), []]);
+    setTimeout(() => { try { window.close(); } catch (e) { } }, 1000);
+  } else if (S.updateStatus && S.updateStatus.startsWith("failed:")) {
+    b.push(["warn", t("update_failed", esc(tr(S.updateStatus.replace(/^failed: /, "")))), [[t("update_retry"), "update-check"]]]);
+  }
   if (!S.pathOk) b.push(["bad", t("bad_path", esc(S.root))]);
   const choose = S.canSetup ? [[t("choose_game"), "choose-game"]] : [];
   if (S.setupStatus === "running") b.push(["info", t("setting_up", esc(S.setupLog))]);
@@ -692,6 +707,8 @@ function renderSettings() {
   fill($("#s-res"), [["0x0", t("res_game")], ...res], cur);
   if (document.activeElement !== $("#s-full")) $("#s-full").checked = S.settings.fullscreen;
   $("#s-nov").checked = !!S.settings.showNov;
+  const prevEl = $("#s-preview-updates");
+  if (prevEl && document.activeElement !== prevEl) prevEl.checked = !!S.settings.previewUpdates;
   const busy = S.setupStatus === "running";
   paint($("#s-game"), `<p class="hint">${t("copies_hint")}</p>
     ${S.copies.map((c) => `<div class="copy">
@@ -762,6 +779,11 @@ document.addEventListener("click", async (e) => {
   switch (b.dataset.act) {
     case "setup": return S.gameDir ? act("setup", {}) : chooseGame();
     case "choose-game": return chooseGame();
+    case "update-apply": return act("update/apply", {});
+    case "update-check": return act("update/check", {});
+    case "update-page":
+      if (S.updateUrl) window.open(S.updateUrl, "_blank");
+      return;
     case "firewall": {
       toast(t("firewall_asking"), true);
       const r = await act("firewall", {});
@@ -872,6 +894,7 @@ document.addEventListener("change", async (e) => {
       return p && applyPreset(p);
     }
     case "s-nov": return act("settings", { showNov: el.checked });
+    case "s-preview-updates": return act("settings", { previewUpdates: el.checked });
     case "h-spec": case "h-draft": case "h-bans": case "h-picks": case "h-dtime": {
       const H = structuredClone(S.hostSetup);
       H.spectators = $("#h-spec").checked;

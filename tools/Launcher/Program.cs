@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -42,11 +43,17 @@ namespace HmmRevive.Launcher
         }
 
         private static int _uiPort, _lobbyPort = 9697, _gamePort = 9696;
+        private static HttpServer _uiServer;
         public static int TestScore;
         private static Lobby _lobby;
         private static Session _session;
         private static readonly object Gate = new object();
         private static string _notice = "";
+
+        public static void StopUi()
+        {
+            try { _uiServer?.Stop(); } catch { }
+        }
 
         public static int Main(string[] args)
         {
@@ -71,6 +78,12 @@ namespace HmmRevive.Launcher
             }
             Console.Title = "HMM Revive " + Version;
             Paths.Init(root, instance);
+            try
+            {
+                string oldExe = Path.ChangeExtension(Paths.LauncherExe, ".old.exe");
+                if (File.Exists(oldExe)) File.Delete(oldExe);
+            }
+            catch { }
             if (settings != null) Paths.Settings = settings;
             Catalog.Load();
             Settings.Load();
@@ -99,6 +112,7 @@ namespace HmmRevive.Launcher
                 ui = new HttpServer(IPAddress.Loopback, 0, HandleLocal);
                 ui.Start();
             }
+            _uiServer = ui;
             _uiPort = ui.Port;
             _logFile = Path.ChangeExtension(Paths.Settings, ".log"); // launcher-settings.log, fresh each start
             try { File.Delete(_logFile); } catch { }
@@ -108,7 +122,17 @@ namespace HmmRevive.Launcher
             Console.WriteLine("Keep this window open while you play. Close it to quit the launcher (a running match keeps going).");
             Console.WriteLine();
             Log($"root={Paths.Root} instance={Paths.Instance} ui={_uiPort} lobby={_lobbyPort} game={_gamePort}");
-            if (browser) Browser.Open(url);
+            if (browser)
+            {
+                Browser.CloseAppWindows();
+                Thread.Sleep(200);
+                Browser.Open(url);
+            }
+            new Thread(() =>
+            {
+                Thread.Sleep(3000);
+                Updater.Check(Settings.Data.Bool("previewUpdates"));
+            }) { IsBackground = true, Name = "startup-update" }.Start();
             while (true)
             {
                 Firewall.Refresh(); // netsh is slow; the page reads the cached answer
@@ -230,6 +254,13 @@ namespace HmmRevive.Launcher
                     return Ok(new Dictionary<string, object> { ["file"] = Game.BrowseForGame() });
                 case "/api/firewall":
                     return Ok(new Dictionary<string, object> { ["ok"] = Firewall.Setup(_gamePort, _lobbyPort) });
+                case "/api/update/check":
+                    Updater.Check(Settings.Data.Bool("previewUpdates"));
+                    return Ok();
+                case "/api/update/apply":
+                    if (Updater.Status != "available") return Response.Error("No update available.");
+                    Updater.Apply();
+                    return Ok();
                 case "/api/open-folder":
                     Process.Start("explorer.exe", "\"" + Paths.Root + "\"");
                     return Ok();
@@ -289,6 +320,7 @@ namespace HmmRevive.Launcher
             if (d.ContainsKey("fullscreen")) Settings.Data["fullscreen"] = d.Bool("fullscreen", true);
             if (Builds.Legacy.Contains(d.Str("hostBuild")) || d.Str("hostBuild") == Builds.Steam) Settings.Data["hostBuild"] = d.Str("hostBuild");
             if (d.ContainsKey("showNov")) Settings.Data["showNov"] = d.Bool("showNov", false); // Nov 2017 build in the Host list
+            if (d.ContainsKey("previewUpdates")) Settings.Data["previewUpdates"] = d.Bool("previewUpdates", false);
             if (d.Str("lang") == "en" || d.Str("lang") == "pt") Settings.Data["lang"] = d.Str("lang"); // page language
             if (d.Str("drive") == "mouse" || d.Str("drive") == "wasd") Settings.Data["drive"] = d.Str("drive"); // how I drive on the 2017 builds
             if (d.ContainsKey("presets")) Settings.Data["presets"] = CleanPresets(d.List("presets"));
@@ -411,6 +443,12 @@ namespace HmmRevive.Launcher
                 ["firewall"] = Firewall.Cached,
                 ["lobbyPort"] = _lobbyPort,
                 ["gamePort"] = _gamePort,
+                ["updateStatus"] = Updater.Status,
+                ["updateVersion"] = Updater.LatestVersion,
+                ["updateNotes"] = Updater.ReleaseNotes,
+                ["updateUrl"] = Updater.ReleaseUrl,
+                ["updatePreview"] = Updater.IsPreview,
+                ["updatePercent"] = Updater.DownloadPercent,
             };
         }
 
@@ -459,6 +497,71 @@ namespace HmmRevive.Launcher
             }
             try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
             catch (Exception e) { Program.Log("can't open a browser: " + e.Message + ". Open " + url + " yourself."); }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetConsoleWindow();
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+        private const uint WM_CLOSE = 0x0010;
+
+        public static void CloseAppWindows()
+        {
+            try
+            {
+                IntPtr console = GetConsoleWindow();
+                int currentPid = Process.GetCurrentProcess().Id;
+
+                EnumWindows((hWnd, lParam) =>
+                {
+                    if (hWnd == console) return true;
+                    if (!IsWindowVisible(hWnd)) return true;
+
+                    var sb = new StringBuilder(256);
+                    GetWindowText(hWnd, sb, 256);
+                    string title = sb.ToString().Trim();
+
+                    if (title == "HMM Revive" || title.StartsWith("HMM Revive -") || title.StartsWith("HMM Revive —"))
+                    {
+                        uint pid = 0;
+                        GetWindowThreadProcessId(hWnd, out pid);
+                        if (pid == currentPid) return true;
+
+                        try
+                        {
+                            var proc = Process.GetProcessById((int)pid);
+                            string name = proc.ProcessName.ToLowerInvariant();
+                            if (name.Contains("hmm")) return true;
+
+                            PostMessage(hWnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                        }
+                        catch
+                        {
+                            PostMessage(hWnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                        }
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch (Exception e)
+            {
+                Program.Log("failed to close app windows: " + e.Message);
+            }
         }
 
         private static string AppPath(string exe)
