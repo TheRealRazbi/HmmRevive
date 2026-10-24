@@ -42,6 +42,23 @@ A versão (ex.: `HMM Revive 1.2`) aparece no topo da janela do launcher; diga qu
 Na partida, digite `/cars` no chat para ver os carros e `/car <nome>` para trocar, ou `/skins` e `/skin <número>`
 para a skin (a troca acontece enquanto você está morto ou entre os rounds).
 
+### Salas na nuvem (sem VPN)
+
+Em vez de hospedar no seu PC, o host pode escolher **Hospedar, Na nuvem**. A sala passa a rodar em um servidor criado só para
+ela: ninguém precisa de Radmin, Tailscale ou ZeroTier, e a sala continua aberta se o host fechar o launcher. O servidor é
+apagado alguns minutos depois que o último jogador sai, ou depois de 3 horas no máximo.
+
+- **Para criar** você precisa de uma *chave de convite* de quem cuida da nuvem. Cole a chave uma vez na opção "Na nuvem" da
+  tela Hospedar (ela fica salva no seu PC). Cada chave pode ter duas salas na nuvem abertas ao mesmo tempo. O host escolhe quem
+  pode encontrar a sala ("Qualquer pessoa" mostra em Jogar, "Só quem tiver o código" não mostra) e pode definir uma senha.
+- **Para entrar** não precisa de chave. As salas na nuvem aparecem em **Jogar** com o selo de nuvem (e um cadeado quando pedem
+  senha), ou digite o código de seis caracteres da sala (por exemplo `a1b2c3`) ou o endereço `https://` dela na caixa de entrar.
+- **Voltar:** se você fechar o launcher com a sua sala na nuvem aberta, a tela Hospedar oferece voltar para o seu lugar.
+- **Região:** Brasil, EUA ou Europa (Madri); escolha a mais perto da maioria dos jogadores. A sala abre em cerca de 70 segundos
+  no Brasil e uns dois minutos nas outras; nos primeiros segundos o servidor ainda está preparando o jogo, a sala mostra isso
+  para todos, e a partida começa quando ele fica pronto.
+- Todos precisam da mesma versão do HMM Revive. As salas na nuvem usam a versão da Steam.
+
 **Segurança:** o servidor de partida e a sala não têm autenticação de verdade. Qualquer pessoa que alcance as portas
 deles (UDP 9696 para o jogo, TCP/UDP 9697 para a sala) pode entrar enquanto estão abertos. Compartilhe pelo Radmin VPN,
 Tailscale ou ZeroTier (o LEIA-ME do kit mostra como liberar só essas portas para quem você convidou no Tailscale) e feche a sala

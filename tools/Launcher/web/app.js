@@ -369,6 +369,9 @@ function render() {
   $("#nav-lobby").classList.toggle("unread", said > chatSeen);
   if (!inLobby && view === "lobby") return show("play");
   renderBanners();
+  // Creating or rejoining a cloud lobby from the Host screen: open it as soon as the host seat is taken.
+  if (awaitingCloud && S.cloud && S.cloud.state === "ready" && S.lobby) { awaitingCloud = false; return show("lobby"); }
+  if (awaitingCloud && S.cloud && S.cloud.state === "failed") awaitingCloud = false;
   if (view === "play") renderPlay();
   if (view === "host") renderHost();
   if (view === "lobby" && inLobby) renderLobby();
@@ -403,6 +406,9 @@ function renderBanners() {
     for (const c of S.copies.filter((c) => isLegacy(c.build) && c.needsUpdate && c.canSetup))
       b.push(["warn", t("needs_update_copy", buildName(c.build), esc(c.version), esc(c.kitVersion)), [[t("update_game"), "setup:" + c.build]]]);
   if (S.notice) b.push(["info", esc(tr(S.notice))]);
+  // A cloud lobby is starting and the host is on another tab: say so, with the same estimate.
+  const cp = S.cloud && S.cloud.state === "creating" && S.cloud.progress;
+  if (cp && view !== "host") b.push(["info", t("cloud_banner", cp.number, cp.count, t("cloud_step_" + cp.step).toLowerCase(), etaText(cp)), [[t("cloud_show"), "show-host"]]]);
   // The first button is the main one.
   paint($("#banners"), b.map(([k, text, btns = []]) =>
     `<div class="banner ${k}"><div>${text}</div>${btns.length ? `<div class="row">${btns.map(([label, action], i) =>
@@ -416,12 +422,19 @@ async function discover() {
   discovering = true;
   $("#refresh").disabled = true;
   $("#refresh").textContent = t("searching_btn");
-  try { lobbies = (await api("discover")).lobbies; } catch (e) { lobbies = []; }
+  try { lobbies = (await api("discover", { cloud: true })).lobbies; } catch (e) { lobbies = []; }
   discovering = false;
   $("#refresh").disabled = false;
   $("#refresh").textContent = t("refresh");
   renderPlay();
 }
+
+// Latency, colored: under 60 ms good, under 120 fair, above that poor.
+// "brazilsouth" -> "Brazil" / "Brasil" (the orchestrator's region names are never shown as they are).
+const REGIONS = ["brazilsouth", "eastus", "spaincentral"];
+const regionName = (r) => (REGIONS.includes(r) ? t("region_" + r) : r || "");
+const pingClass = (ms) => (ms == null ? "none" : ms < 60 ? "good" : ms < 120 ? "ok" : "bad");
+const pingText = (ms) => (ms == null ? t("ping_none") : ms + " ms");
 
 function renderPlay() {
   if (!S) return;
@@ -432,13 +445,14 @@ function renderPlay() {
   else html = list.map((l) => {
     const live = l.phase !== "lobby";
     const sameVersion = l.version === S.version;
-    const canJoin = sameVersion && haveBuild(l.build);
+    const build = l.build || "steam"; // cloud lobbies always play the Steam build
+    const canJoin = sameVersion && haveBuild(build);
     return `<div class="card">
       <div class="t">${t("someones_lobby", esc(l.host || t("someone")))}</div>
-      <div class="m">${isLegacy(l.build) ? esc(buildName(l.build)) + " · " : ""}${esc(arenaName(l.arena, l.build))} · ${l.players === 1 ? t("players_1") : t("players_n", l.players)}${l.bots ? t("plus_bots", l.bots) : ""}${l.draft ? " · " + t("draft_title") : ""}${l.spectatorSeats ? " · " + t("spec_seats_n", l.spectatorSeats) : ""}</div>
-      <div class="m">${esc(l.address)} · ${t("via", esc(l.via))}${sameVersion ? "" : ` · <span class="warn-t">${t("version_x", esc(l.version))}</span>`}${sameVersion && !haveBuild(l.build) ? ` · <span class="warn-t">${t("lobby_needs_copy", esc(buildName(l.build)))}</span>` : ""}</div>
-      <div class="row"><span class="pill ${live ? "live" : "open"}">${live ? t("match_running_pill") : t("in_lobby_pill")}</span>
-        <button class="primary" data-join="${esc(l.address)}" ${canJoin ? "" : "disabled"}>${t("join")}</button></div>
+      <div class="m">${isLegacy(build) ? esc(buildName(build)) + " · " : ""}${esc(arenaName(l.arena, build))} · ${l.players === 1 ? t("players_1") : t("players_n", l.players)}${l.bots ? t("plus_bots", l.bots) : ""}${l.draft ? " · " + t("draft_title") : ""}${l.spectatorSeats ? " · " + t("spec_seats_n", l.spectatorSeats) : ""}</div>
+      <div class="m">${esc(l.address)} · ${t("via", esc(l.via))}${sameVersion ? "" : ` · <span class="warn-t">${t("version_x", esc(l.version))}</span>`}${sameVersion && !haveBuild(build) ? ` · <span class="warn-t">${t("lobby_needs_copy", esc(buildName(build)))}</span>` : ""}${l.passwordRequired ? ` · 🔒 ${t("password_needed")}` : ""}${"ping" in l ? ` · ${t("ping_label")} <span class="ping ${pingClass(l.ping)}" title="${esc(t("ping_tip"))}">${pingText(l.ping)}</span>` : ""}</div>
+      <div class="row"><span class="pill ${live ? "live" : "open"}">${live ? t("match_running_pill") : t("in_lobby_pill")}</span>${l.cloud ? `<span class="pill cloud">☁ ${t("cloud_badge")}${l.region ? " · " + esc(regionName(l.region)) : ""}</span>` : ""}
+        <button class="primary" data-join="${esc(l.address)}" ${l.passwordRequired ? 'data-pw="1"' : ""} ${canJoin ? "" : "disabled"}>${t("join")}</button></div>
     </div>`;
   }).join("");
   paint($("#lobbies"), html);
@@ -456,7 +470,59 @@ function renderOnline() {
 }
 
 // ----- host -----
+let hostMode = "local", awaitingCloud = false;
+try { hostMode = localStorage.getItem("hostMode") === "cloud" ? "cloud" : "local"; } catch (e) { }
+
+// "About 1 min 20 s left", "Almost there...", or the honest "taking longer" text.
+function etaText(p) {
+  if (p.slow || p.etaSeconds == null) return t("cloud_eta_slow");
+  const s = p.etaSeconds;
+  if (s < 20) return t("cloud_eta_almost");
+  return s >= 60 ? t("cloud_eta_min", Math.floor(s / 60), String(s % 60).padStart(2, "0")) : t("cloud_eta_sec", Math.max(5, Math.round(s / 5) * 5));
+}
+
+// Shown while a cloud lobby is created: that something is happening, what, what is left and how long.
+function progressPanel(p) {
+  if (!p) return "";
+  const cur = p.step;
+  const steps = p.steps.map((s) => `<li class="${s.state}">${s.state === "done" ? "✓" : s.state === "current" ? "●" : "○"} ${t("cloud_step_" + s.key)}</li>`).join("");
+  return `<div class="progress-panel">
+    <div class="pg-title">${t("cloud_pg_title")}</div>
+    <div class="pg-bar"><div class="pg-fill busy" style="width:${p.percent}%"></div></div>
+    <div class="pg-line"><b>${t("cloud_pg_step", p.number, p.count, t("cloud_step_" + cur))}</b> · ${p.percent}%</div>
+    <div class="pg-detail">${t("cloud_step_" + cur + "_d")}</div>
+    <ul class="pg-steps">${steps}</ul>
+    <div class="pg-eta ${p.slow ? "slow" : ""}">${etaText(p)}</div>
+    <div class="pg-detail">${p.elapsedSeconds < 10 ? t("cloud_pg_usual") : t("cloud_pg_tip")}</div>
+  </div>`;
+}
+
+function renderCloudHost() {
+  const C = S.cloud || { state: "idle" };
+  document.querySelectorAll("#host-mode button").forEach((b) => b.classList.toggle("on", b.dataset.mode === hostMode));
+  $("#host-local").hidden = hostMode !== "local";
+  $("#host-cloud").hidden = hostMode !== "cloud";
+  // A saved lobby from the last run: offer to take the seat back.
+  const offer = C.saved && C.state === "idle" && !S.hosting;
+  paint($("#cloud-rejoin"), offer ? `<div class="banner info"><div>${t("cloud_rejoin_offer", esc(C.saved.hostname || C.saved.id))}</div><div class="row"><button class="primary" data-act="cloud-rejoin">${t("cloud_rejoin")}</button></div></div>` : "");
+  $("#cloud-key-row").hidden = !!C.keySet;
+  if (!$("#cloud-visibility").options.length) fill($("#cloud-visibility"), [["public", t("cloud_vis_public")], ["private", t("cloud_vis_private")]], "public");
+  // The region the host used last time is the starting choice.
+  fill($("#cloud-region"), REGIONS.map((r) => [r, regionName(r)]), $("#cloud-region").value || (S.settings.cloudRegion || "brazilsouth"));
+  const busy = C.state === "creating";
+  $("#cloud-region").disabled = busy || C.state === "ready";
+  $("#cloud-visibility").disabled = $("#cloud-password").disabled = busy || C.state === "ready";
+  let progress = "";
+  if (busy) progress = progressPanel(C.progress);
+  else if (C.state === "failed") progress = `<div class="banner bad"><div>${t("cloud_failed", esc(tr(C.message)))}</div></div>`;
+  paint($("#cloud-progress"), progress);
+  const create = $("#create-cloud");
+  create.disabled = busy;
+  create.textContent = C.state === "ready" ? t("go_to_lobby") : busy ? t("cloud_creating") : t("cloud_create");
+}
+
 function renderHost() {
+  renderCloudHost();
   const addr = joinAddresses().filter((a) => a.kind !== "LAN");
   paint($("#host-checks"), `
     <p>${addr.length ? t("players_join_with", addr.map((a) => `<code>${esc(a.ip)}</code> <span class="hint">(${esc(a.kind)})</span>`).join(", ")) : t("no_vpn_address")}</p>
@@ -475,6 +541,34 @@ function renderHost() {
 }
 
 // ----- lobby -----
+// Cloud lobbies show their code (to share) and, for the host, who may find the lobby.
+function renderCloudBar(L, amHost) {
+  const bar = $("#cloud-bar");
+  bar.hidden = !L.cloud;
+  if (!L.cloud) return;
+  const code = amHost && S.cloud && S.cloud.id ? S.cloud.id : (S.lobbyAddress || "").split(".")[0];
+  paint(bar, `<span class="pill cloud">☁ ${t("cloud_badge")}${L.region ? " · " + esc(regionName(L.region)) : ""}</span><b>${t("cloud_code", esc(code))}</b>` + (amHost ?
+    `<label><span class="hint">${t("cloud_visibility")}</span> <select id="cloud-vis"><option value="public" ${L.visibility === "private" ? "" : "selected"}>${t("cloud_vis_public")}</option><option value="private" ${L.visibility === "private" ? "selected" : ""}>${t("cloud_vis_private")}</option></select></label>` : ""));
+}
+
+// A cloud lobby opens while its server is still downloading the game: every member sees how far it is, and matches wait.
+const SG_REASONS = { "no storage token": "sg_r_token", "the game for this version is not in storage": "sg_r_missing",
+  "the download of the game was cut": "sg_r_cut", "the downloaded game has no HMM.exe": "sg_r_broken" };
+function renderServerGame(L, amHost) {
+  const panel = $("#server-game"), G = L.serverGame;
+  panel.hidden = !G || G.state === "ready";
+  if (panel.hidden) return;
+  panel.classList.toggle("failed", G.state === "failed");
+  if (G.state === "failed") {
+    paint(panel, `<div class="pg-title">${t("sg_failed_title")}</div><div class="pg-line">${esc(SG_REASONS[G.reason] ? t(SG_REASONS[G.reason]) : G.reason || "")}</div>`
+      + `<div class="pg-detail">${t("sg_failed_detail")}</div>`);
+    return;
+  }
+  const left = G.secondsLeft >= 0 ? " · " + t("sg_left", G.secondsLeft) : "";
+  paint(panel, `<div class="pg-title">${t("sg_title")}</div><div class="pg-bar"><div class="pg-fill${G.percent ? "" : " busy"}" style="width:${Math.max(3, G.percent)}%"></div></div>`
+    + `<div class="pg-line">${t("sg_progress", G.percent)}${left}</div><div class="pg-detail">${t(amHost ? "sg_hint_host" : "sg_hint_guest")}</div>`);
+}
+
 function renderLobby() {
   const L = S.lobby;
   const me = L.members.find((m) => m.id === L.me) || {};
@@ -487,6 +581,12 @@ function renderLobby() {
     + (!legacy && L.cooldown ? " · " + t("cd_short", L.cooldown) : "")
     + (hostOut ? " · " + t("host_not_playing") : "") + (amHost ? "" : " · " + S.lobbyAddress);
 
+  // Latency to the server (not shown for a lobby on this PC).
+  const chip = $("#ping-chip"), P = S.ping;
+  chip.hidden = !P;
+  if (P) paint(chip, `<span class="ping ${pingClass(P.ms)}" title="${esc(t("ping_tip"))}">${t("ping_label")} ${pingText(P.ms)}</span>`
+    + (P.avg != null ? ` <span class="hint">· ${t("ping_detail", P.avg, P.min, P.max)}${P.lossPercent ? " · " + t("ping_loss", P.lossPercent) : ""}</span>` : ""));
+
   // status line
   let st = "", cls = "status";
   if (L.phase === "lobby" && L.countdown >= 0) { st = t(L.nextIsDraft ? "draft_in" : "starting_in", L.countdown); cls += " count"; }
@@ -498,17 +598,21 @@ function renderLobby() {
       : me.team === "none" ? t("running_hosting") : t("running_next");
   } else {
     const waiting = L.members.filter((m) => isPlayer(m) && !m.ready).map((m) => m.name);
-    st = L.cantStart ? tr(L.cantStart) : waiting.length ? t(waiting.length === 1 ? "waiting_for" : "waiting_for_n", waiting.join(", ")) : L.autoStart ? t("everyone_ready") : t("everyone_ready_host");
+    const sg = L.serverGame && L.serverGame.state !== "ready" ? L.serverGame.state : ""; // the panel above tells the details
+    st = sg ? t(sg === "failed" ? "sg_failed_title" : "sg_wait") : L.cantStart ? tr(L.cantStart) : waiting.length ? t(waiting.length === 1 ? "waiting_for" : "waiting_for_n", waiting.join(", ")) : L.autoStart ? t("everyone_ready") : t("everyone_ready_host");
   }
   const status = $("#lobby-status");
   status.className = cls;
-  paint(status, esc(st) + (L.message && L.phase === "lobby" ? ` <span class="hint">· ${esc(tr(L.message))}</span>` : ""));
+  const sgFailed = L.serverGame && L.serverGame.state === "failed";
+  paint(status, esc(st) + (L.message && L.phase === "lobby" && !sgFailed ? ` <span class="hint">· ${esc(tr(L.message))}</span>` : ""));
 
   for (const team of ["blue", "red"]) {
     paint($("#slots-" + team), slotsHtml(L, team, me, amHost));
     const full = L.members.filter((m) => m.team === team).length >= 4;
     paint($("#switch-" + team), L.phase === "lobby" && !L.draft && me.team && me.team !== team && !full ? `<button data-team="${team}">${t("switch_here")}</button>` : "");
   }
+  renderCloudBar(L, amHost);
+  renderServerGame(L, amHost);
   renderDraft(L, me);
   renderSpecs(L, me, amHost);
   renderChat(L);
@@ -571,6 +675,7 @@ function renderLobby() {
       .map((s) => [String(s), s ? t("draft_seconds", s) : t("draft_time_off")]), String(H.draftTime));
     $("#start").hidden = locked;
     $("#start").disabled = !!L.cantStart;
+    $("#start").title = L.cantStart ? tr(L.cantStart) : "";
     $("#start").textContent = L.nextIsDraft ? t("start_draft") : t("start_now");
     $("#stop").hidden = !locked;
     $("#stop").textContent = L.phase === "draft" ? t("stop_draft") : t("stop_match");
@@ -816,7 +921,8 @@ document.addEventListener("click", async (e) => {
   if (!b) return;
   if (b.dataset.view) return show(b.dataset.view);
   if (b.id === "me-chip") return show("settings");
-  if (b.dataset.join) return join(b.dataset.join);
+  if (b.dataset.join) return join(b.dataset.join, b.dataset.pw === "1");
+  if (b.dataset.mode) { hostMode = b.dataset.mode; try { localStorage.setItem("hostMode", hostMode); } catch (e) { } return renderHost(); }
   if (b.dataset.fill) { $("#join-address").value = b.dataset.fill; return; }
   if (b.dataset.team) return act("lobby/update", { team: b.dataset.team });
   if (b.dataset.kick) return act("host/kick", { id: b.dataset.kick });
@@ -852,6 +958,8 @@ document.addEventListener("click", async (e) => {
     case "update-page":
       if (S.updateUrl) window.open(S.updateUrl, "_blank");
       return;
+    case "show-host": return show("host");
+    case "cloud-rejoin": awaitingCloud = true; if (!(await act("cloud/rejoin", {}))) awaitingCloud = false; return;
     case "firewall": {
       toast(t("firewall_asking"), true);
       const r = await act("firewall", {});
@@ -862,6 +970,14 @@ document.addEventListener("click", async (e) => {
   }
   switch (b.id) {
     case "refresh": return discover();
+    case "create-cloud": {
+      if (S.cloud && S.cloud.state === "ready" && S.lobby) return show("lobby");
+      if (!S.cloud || !S.cloud.keySet) { toast(t("cloud_need_key")); $("#cloud-key").focus(); return; }
+      awaitingCloud = true;
+      const r = await act("cloud/create", { visibility: $("#cloud-visibility").value || "public", password: $("#cloud-password").value, region: $("#cloud-region").value });
+      if (!r) awaitingCloud = false;
+      return;
+    }
     case "open-lobby":
       if (!S.hosting && !(await act("host/open", { build: $("#host-build").value || hostBuilds()[0] }))) return;
       return show("lobby");
@@ -888,13 +1004,36 @@ document.addEventListener("click", async (e) => {
   }
 });
 
-async function join(address) {
+async function join(address, needsPassword) {
+  let password;
+  if (needsPassword) { password = prompt(t("password_prompt")); if (password === null) return; }
   const btns = document.querySelectorAll("[data-join], #join-form button");
   btns.forEach((b) => (b.disabled = true));
-  const r = await act("join", { address });
-  btns.forEach((b) => (b.disabled = false));
-  if (r) show("lobby");
+  try {
+    for (;;) {
+      try {
+        await api("join", { address, password });
+        await poll();
+        show("lobby");
+        break;
+      } catch (e) {
+        // A typed code or address of a lobby with a password: ask for it once, then try again.
+        if (/needs a password/i.test(e.message) && password === undefined) { password = prompt(t("password_prompt")); if (password !== null) continue; }
+        else toast(tr(e.message));
+        break;
+      }
+    }
+  } finally { btns.forEach((b) => (b.disabled = false)); }
 }
+
+$("#cloud-key-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("#cloud-key");
+  if (await act("settings", { cloudKey: input.value }, t("cloud_key_saved"))) input.value = "";
+});
+document.addEventListener("change", (e) => {
+  if (e.target.id === "cloud-vis") act("host/visibility", { visibility: e.target.value });
+});
 
 $("#join-form").addEventListener("submit", (e) => {
   e.preventDefault();

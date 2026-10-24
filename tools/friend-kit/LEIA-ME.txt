@@ -35,6 +35,17 @@ Na sala
   - Velocidade da bola: o host escolhe na sala (0.5x a 3x, 1x = normal), também durante a partida, ou digita
     /ballspeed 1.5 no chat da partida. /ballspeed sozinho mostra a velocidade atual.
 
+SALA NA NUVEM (sem VPN, sem PC que precise ficar ligado)
+  - Em Hospedar, escolha "Na nuvem". Precisa de uma chave de convite de quem cuida da nuvem: cole uma vez onde a tela pedir
+    (fica salva no seu PC). Escolha quem pode encontrar a sala (Qualquer pessoa = aparece em Jogar, Só quem tiver o código) e uma
+    senha opcional, e a região (Brasil, EUA ou Europa: a mais perto da maioria dos jogadores), depois "Criar sala na nuvem".
+    Abre em cerca de um minuto (dois fora do Brasil). Nos primeiros segundos o servidor ainda está preparando o jogo: a sala
+    mostra isso, e a partida começa quando ele fica pronto.
+  - Os jogadores acham a sala em Jogar (selo de nuvem, cadeado = senha) ou digitam o código (como a1b2c3) na caixa de entrar.
+    Entrar não precisa de chave.
+  - O servidor é apagado alguns minutos depois que o último jogador sai, ou depois de 3 horas. Se você fechar o launcher nesse
+    meio tempo, Hospedar oferece "Voltar para sua sala na nuvem". Todos precisam da mesma versão.
+
 HOST (uma pessoa, num PC que fica ligado durante a partida)
   - No HMM-Revive.exe, vá em Host e clique em "Set up firewall" uma vez (o Windows pede administrador). Isso libera
     a porta do jogo (UDP 9696) e da sala (TCP e UDP 9697), só para o Tailscale e redes locais

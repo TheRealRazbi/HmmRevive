@@ -3,12 +3,14 @@
 # Contains only this project's code (no Hoplon files); friends patch their own Steam install.
 # The version comes from ./VERSION (also baked into HmmRevive.dll, which the kit scripts read).
 #   tools/make_friend_kit.sh preview [N]  for a GitHub pre-release: HMM-Revive-friend-kit-<version>-preview[.N].zip
+#   tools/make_friend_kit.sh preview N cloud  a named variant: <version>-preview.N-cloud (the updater compares only
+#                                             <version> and N, so the variant is not offered an older official preview)
 # The launcher knows which release it is (tag v<version>[-preview[.N]]) to offer the right updates.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f tools/local.env ] && . tools/local.env
 V=$(tr -d '[:space:]' < VERSION)
-case "${1:-}" in "") LABEL=$V; SUFFIX= ;; preview) LABEL="$V (preview${2:+ $2})"; SUFFIX=-preview${2:+.$2} ;; *) echo "usage: tools/make_friend_kit.sh [preview [N]]"; exit 1 ;; esac
+case "${1:-}" in "") LABEL=$V; SUFFIX= ;; preview) LABEL="$V (preview${2:+ $2}${3:+, $3})"; SUFFIX=-preview${2:+.$2}${3:+-$3} ;; *) echo "usage: tools/make_friend_kit.sh [preview [N [variant]]]"; exit 1 ;; esac
 KIT=build/friend-kit
 ZIP="build/HMM-Revive-friend-kit-$V$SUFFIX.zip"
 rm -rf "$KIT" "$ZIP" && mkdir -p "$KIT/mod"

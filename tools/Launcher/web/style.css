@@ -173,6 +173,33 @@ label > select, label > input { color: var(--text); font-size: 14px; }
 label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
 .row { display: flex; gap: 8px; align-items: center; }
 .row input { flex: 1; }
+.seg { display: inline-flex; gap: 0; margin: 10px 0; }
+.seg button { border-radius: 0; }
+.seg button:first-child { border-radius: 8px 0 0 8px; }
+.seg button:last-child { border-radius: 0 8px 8px 0; }
+.seg button.on { background: var(--accent, #2f7df6); color: #fff; }
+.progress-panel { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+.pg-title { font-weight: 700; margin-bottom: 8px; }
+.pg-bar { height: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.pg-fill { height: 100%; background: var(--accent, #ff7a1a); transition: width .6s ease; }
+.pg-fill.busy { animation: pg-pulse 1.4s ease-in-out infinite; }
+@keyframes pg-pulse { 50% { opacity: .65; } }
+.pg-line { margin: 10px 0 2px; }
+.pg-detail { color: var(--muted); font-size: 13px; }
+.pg-steps { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 4px; font-size: 13.5px; }
+.pg-steps li { color: var(--muted); }
+.pg-steps li.done { color: var(--ok); }
+.pg-steps li.current { color: inherit; font-weight: 600; }
+.pg-eta { margin-top: 6px; font-weight: 600; }
+.pg-eta.slow { color: var(--warn); }
+.ping { font-variant-numeric: tabular-nums; font-weight: 600; }
+.ping.good { color: var(--ok); }
+.ping.ok { color: var(--warn); }
+.ping.bad { color: #ff6b6b; }
+.ping.none { color: var(--muted); font-weight: 400; }
+#ping-chip { margin-top: 4px; font-size: 13px; }
+.pill.cloud { color: #7cc4ff; border-color: #7cc4ff55; }
+#cloud-bar { align-items: center; gap: 10px; margin: 6px 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chips button { padding: 3px 10px; font-size: 12.5px; border-radius: 999px; color: var(--muted); }
 details.old { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
@@ -357,3 +384,7 @@ p.banner { display: block; }
 .banner details summary { cursor: pointer; }
 code.cmd { user-select: all; padding: 4px 8px; background: var(--panel-2); border-radius: 6px; word-break: break-all; }
 pre.changelog { max-height: 240px; overflow: auto; white-space: pre-wrap; font: inherit; font-size: 13px; margin: 8px 0 0; }
+/* A cloud lobby's server still downloading the game (CREATE-11). */
+.server-game { margin: 8px 0; border-color: #7cc4ff55; }
+.server-game.failed { border-color: #ff6b6b88; }
+.server-game.failed .pg-title { color: #ff6b6b; }

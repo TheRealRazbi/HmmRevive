@@ -59,6 +59,12 @@ namespace HmmRevive.Launcher
         private static Lobby _lobby;
         private static Session _session;
         private static readonly object Gate = new object();
+        // The host's side of a cloud lobby: its buttons go to the lobby over HTTPS while one is open.
+        private static readonly CloudHosting Hosting = new CloudHosting(
+            () => Launcher.Cloud.FromSettings(),
+            (lobbyUrl, token) => new RemoteHost(lobbyUrl, token),
+            (hostname, token) => Session.JoinAsHost(hostname, token, out _),
+            seat => { lock (Gate) _session = seat; });
         private static string _notice = "";
 
         private static string[] _args;
@@ -68,6 +74,8 @@ namespace HmmRevive.Launcher
         {
             _args = args;
             _exe = Paths.LauncherExe;
+            // Cloud container: the lobby service only, no page, browser, firewall rules or discovery.
+            if (CloudHost.Requested(args)) return CloudHost.RunFromArgs(args, Environment.GetEnvironmentVariable);
             string root = null, instance = "instance", settings = null;
             int wantUi = 9690;
             bool browser = true, afterUpdate = false, updateCheck = true;
@@ -189,9 +197,36 @@ namespace HmmRevive.Launcher
                 case "/api/effects": return Response.Json(Game.EffectsList());
                 case "/api/state": return Response.Json(State());
                 case "/api/settings": return SaveSettings(d);
-                case "/api/discover": return Response.Json(new Dictionary<string, object> { ["lobbies"] = Discovery.Find(_lobbyPort).ToArray() });
+                case "/api/discover":
+                    // The cloud list is asked for only when the page says so (the Play tab is open).
+                    return Response.Json(new Dictionary<string, object>
+                        { ["lobbies"] = Discovery.Find(_lobbyPort, d?.Bool("cloud") == true ? (Func<List<Dictionary<string, object>>>)(() => Launcher.Cloud.FromSettings().List()) : null, measurePing: true).ToArray() });
                 case "/api/host/open": return HostOpen(d?.Str("build") ?? Settings.Data.Str("hostBuild") ?? Builds.Steam);
                 case "/api/host/close": return HostClose();
+                case "/api/cloud/create":
+                {
+                    if (_lobby != null) return Response.Error("Close your local lobby first.");
+                    LeaveLobby();
+                    string cerr = Hosting.Create(Version, d.Str("visibility"), d.Str("password"), d.Str("label"), d.Str("region"));
+                    return cerr == null ? Ok() : Response.Error(cerr);
+                }
+                case "/api/cloud/state": return Response.Json(CloudState());
+                case "/api/cloud/rejoin":
+                {
+                    if (_lobby != null) return Response.Error("Close your local lobby first.");
+                    LeaveLobby();
+                    string rerr = Hosting.Rejoin();
+                    return rerr == null ? Ok() : Response.Error(rerr);
+                }
+                case "/api/host/visibility" when Hosting.Active:
+                    return CloudAction("visibility", d);
+                case "/api/host/configure" when Hosting.Active: return CloudAction("configure", d);
+                case "/api/host/start" when Hosting.Active: return CloudAction("start", d);
+                case "/api/host/stop" when Hosting.Active: return CloudAction("stop", d);
+                case "/api/host/kick" when Hosting.Active: return CloudAction("kick", d);
+                case "/api/host/draft-reset" when Hosting.Active: return CloudAction("draft-reset", d);
+                case "/api/host/move" when Hosting.Active: return CloudAction("move", d);
+                case "/api/host/swap" when Hosting.Active: return CloudAction("swap", d);
                 case "/api/host/configure":
                     if (_lobby == null) return Response.Error("You're not hosting.");
                     _lobby.Configure(d);
@@ -221,7 +256,7 @@ namespace HmmRevive.Launcher
                     string err = _lobby.SwapMembers(d.Str("a"), d.Str("b"));
                     return err == null ? Ok() : Response.Error(err);
                 }
-                case "/api/join": return JoinLobby(d.Str("address"));
+                case "/api/join": return JoinLobby(d.Str("address"), d.Str("password"));
                 case "/api/leave":
                     LeaveLobby();
                     return Ok();
@@ -380,6 +415,11 @@ namespace HmmRevive.Launcher
             if (d.Str("lang") == "en" || d.Str("lang") == "pt") Settings.Data["lang"] = d.Str("lang"); // page language
             if (d.Str("drive") == "mouse" || d.Str("drive") == "wasd") Settings.Data["drive"] = d.Str("drive"); // how I drive on the 2017 builds
             if (d.ContainsKey("presets")) Settings.Data["presets"] = CleanPresets(d.List("presets"));
+            if (d.ContainsKey("cloudKey"))
+            {
+                string why = CloudHosting.SaveKey(d.Str("cloudKey"));
+                if (why != null) return Response.Error(why);
+            }
             Settings.Save();
             _session?.SendChoices(null); // car/skin changes show in the lobby
             return Ok();
@@ -407,8 +447,32 @@ namespace HmmRevive.Launcher
             }
         }
 
+        private static Response CloudAction(string route, Dictionary<string, object> d)
+        {
+            string why = Hosting.HostAction(route, d ?? new Dictionary<string, object>());
+            return why == null ? Ok() : Response.Error(why);
+        }
+
+        private static Dictionary<string, object> CloudState()
+        {
+            var d = Hosting.State();
+            d["saved"] = CloudHosting.Saved(); // a lobby from the last run that can be rejoined
+            d["keySet"] = !string.IsNullOrEmpty(Settings.Data.Str("cloudKey"));
+            return d;
+        }
+
         private static Response HostClose()
         {
+            if (Hosting.Active)
+            {
+                lock (Gate)
+                {
+                    _session?.Leave();
+                    _session = null;
+                }
+                string why = Hosting.Close(); // the orchestrator deletes the cloud server
+                return why == null ? Ok() : Response.Error("The lobby is closed here, but the cloud may still be shutting it down: " + why);
+            }
             lock (Gate)
             {
                 _session?.Leave();
@@ -419,13 +483,13 @@ namespace HmmRevive.Launcher
             }
         }
 
-        private static Response JoinLobby(string address)
+        private static Response JoinLobby(string address, string password = null)
         {
             lock (Gate)
             {
                 if (_lobby != null) return Response.Error("Close your own lobby first.");
                 LeaveLobby();
-                Session s = Session.Join(address, _lobbyPort, out string error);
+                Session s = Session.Join(address, _lobbyPort, password, out string error);
                 if (s == null) return Response.Error(error);
                 _session = s;
                 Settings.AddRecent(address.Trim());
@@ -454,6 +518,15 @@ namespace HmmRevive.Launcher
             return Ok();
         }
 
+        // What the page may see of the settings: never the cloud invite key or the host token of a saved cloud lobby.
+        private static Dictionary<string, object> PageSettings()
+        {
+            var copy = new Dictionary<string, object>(Settings.Data);
+            copy.Remove("cloudKey");
+            copy.Remove(CloudHosting.SavedKey);
+            return copy;
+        }
+
         private static Dictionary<string, object> State()
         {
             Session s = _session;
@@ -471,7 +544,7 @@ namespace HmmRevive.Launcher
             {
                 ["version"] = Version,
                 ["release"] = Release,
-                ["settings"] = Settings.Data,
+                ["settings"] = PageSettings(),
                 ["root"] = Paths.Root,
                 ["instance"] = Paths.Instance,
                 ["pathOk"] = Paths.PathIsPlain,
@@ -489,10 +562,12 @@ namespace HmmRevive.Launcher
                 ["setupLog"] = setupLog.Length > 4000 ? setupLog.Substring(setupLog.Length - 4000) : setupLog,
                 ["gameDir"] = Game.FindGame(),
                 ["addresses"] = Net.Addresses().ToArray(),
-                ["hosting"] = _lobby != null,
-                ["hostSetup"] = _lobby?.SetupJson(),
+                ["hosting"] = _lobby != null || Hosting.Active,
+                ["cloud"] = CloudState(),
+                ["hostSetup"] = _lobby != null ? _lobby.SetupJson() : Hosting.Active ? Hosting.HostSetup() : null,
                 ["lobby"] = s?.Lobby,
                 ["lobbyAddress"] = s?.Address,
+                ["ping"] = s?.Ping.Snapshot(),
                 ["notice"] = _notice,
                 ["gameRunning"] = Game.Running(Game.Client),
                 ["images"] = Game.ImagesReady, // skin and emote pictures (/img/...)

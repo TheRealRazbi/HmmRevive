@@ -39,7 +39,7 @@
       <h2 data-i18n="join_by_address"></h2>
       <p class="hint" data-i18n="join_hint"></p>
       <form class="row" id="join-form">
-        <input id="join-address" placeholder="100.x.y.z" autocomplete="off" spellcheck="false">
+        <input id="join-address" data-i18n-ph="join_address_ph" autocomplete="off" spellcheck="false">
         <button class="primary" type="submit" data-i18n="join_lobby"></button>
       </form>
       <div id="recent" class="chips"></div>
@@ -64,10 +64,34 @@
     <div class="panel">
       <p data-i18n="host_intro"></p>
       <p class="hint" data-i18n="host_who"></p>
-      <div id="host-checks"></div>
-      <label id="host-build-row" hidden><span data-i18n="host_game"></span> <select id="host-build"></select></label>
-      <p class="banner warn" id="host-build-warn" hidden></p>
-      <button class="primary big" id="open-lobby"></button>
+      <div id="cloud-rejoin"></div>
+      <div class="seg" id="host-mode">
+        <button data-mode="local" data-i18n="host_mode_local"></button>
+        <button data-mode="cloud" data-i18n="host_mode_cloud"></button>
+      </div>
+      <div id="host-local">
+        <div id="host-checks"></div>
+        <label id="host-build-row" hidden><span data-i18n="host_game"></span> <select id="host-build"></select></label>
+        <p class="banner warn" id="host-build-warn" hidden></p>
+        <button class="primary big" id="open-lobby"></button>
+      </div>
+      <div id="host-cloud" hidden>
+        <p data-i18n="cloud_intro"></p>
+        <div id="cloud-key-row" hidden>
+          <p class="banner warn" data-i18n="cloud_need_key"></p>
+          <form class="row" id="cloud-key-form">
+            <input id="cloud-key" data-i18n-ph="cloud_key_ph" autocomplete="off" spellcheck="false" maxlength="128">
+            <button type="submit" data-i18n="cloud_key_save"></button>
+          </form>
+          <p class="hint" data-i18n="cloud_key_help"></p>
+        </div>
+        <label><span data-i18n="cloud_region"></span> <select id="cloud-region"></select></label>
+        <p class="hint" data-i18n="cloud_region_hint"></p>
+        <label><span data-i18n="cloud_visibility"></span> <select id="cloud-visibility"></select></label>
+        <label><span data-i18n="cloud_password"></span> <input id="cloud-password" maxlength="32" autocomplete="off" spellcheck="false"></label>
+        <div id="cloud-progress"></div>
+        <button class="primary big" id="create-cloud"></button>
+      </div>
     </div>
   </section>
 
@@ -77,9 +101,12 @@
       <div>
         <h1 id="lobby-title"></h1>
         <div class="sub" id="lobby-sub"></div>
+        <div id="ping-chip" hidden></div>
       </div>
       <button class="ghost danger" id="leave" data-i18n="leave"></button>
     </div>
+    <div class="row" id="cloud-bar" hidden></div>
+    <div class="progress-panel server-game" id="server-game" hidden></div>
     <div class="status" id="lobby-status"></div>
     <div class="panel draft" id="draft" hidden></div>
     <div class="teams">

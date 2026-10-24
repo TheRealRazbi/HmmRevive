@@ -53,6 +53,31 @@ namespace HmmRevive.Launcher
 
         public readonly int LobbyPort, GamePort;
         public readonly string Build;
+        /// <summary>Cloud lobby (runs in a container): reported in <see cref="Info"/> so clients show it as such.</summary>
+        public bool Cloud;
+        /// <summary>Azure region of a cloud lobby's server (reported so every player sees where it runs); null for a local lobby.</summary>
+        public string Region;
+        /// <summary>"public" is listed by the orchestrator, "private" only joins by address. Local lobbies are always "public".</summary>
+        public string Visibility { get; private set; } = "public";
+        private string _password = ""; // empty = anyone may join
+        private volatile string _hostToken; // cloud lobbies: whoever presents it (Authorization: Bearer) is the host; null = no host routes
+        /// <summary>Seconds between everybody being ready and the match starting (the lobby shows this countdown).</summary>
+        public int CountdownSeconds = 3;
+        // Seams so tests can run the lobby without a game copy; production keeps the real ones.
+        internal Func<string, bool> BuildReady = Builds.Ready;
+        internal Func<Game.ServerOptions, System.Diagnostics.Process> StartServerHook = Game.StartServer;
+        /// <summary>
+        /// A cloud lobby whose container is still downloading the game (GameDownload); null = the game is in place (every
+        /// local lobby). Matches wait for it; a failed download closes the lobby after <see cref="GameFailedCloseSeconds"/>.
+        /// </summary>
+        internal Func<GameDownload> ServerGame = () => null;
+        public int GameFailedCloseSeconds = 60;
+        private string _serverGameLine; // the download state members last saw
+        private DateTime? _gameFailedAt;
+        private bool _closeAsked;
+        /// <summary>Raised (on another thread, after the answer is sent) when the host asks to close the lobby, or when the
+        /// game download of a cloud lobby failed.</summary>
+        public event Action CloseRequested;
         public string Phase = "lobby"; // lobby, starting, playing
         public string Message = "";
         public int Arena = 1, Score = 3;
@@ -80,16 +105,18 @@ namespace HmmRevive.Launcher
             LoadSetup(Settings.Data.Obj("host"));
         }
 
-        public bool Open()
+        /// <summary>Opens the lobby. Local lobbies take the defaults; the cloud passes loopback, limits and no discovery.</summary>
+        public bool Open(IPAddress bind = null, HttpLimits limits = null, bool discovery = true)
         {
-            _http = new HttpServer(IPAddress.Any, LobbyPort, Handle);
+            _http = new HttpServer(bind ?? IPAddress.Any, LobbyPort, Handle, limits);
             if (!_http.Start()) return false;
-            try
-            {
-                _discovery = new UdpClient(new IPEndPoint(IPAddress.Any, LobbyPort)) { EnableBroadcast = true };
-                new Thread(DiscoveryLoop) { IsBackground = true, Name = "discovery" }.Start();
-            }
-            catch (SocketException e) { Program.Log("discovery port busy: " + e.Message); }
+            if (discovery)
+                try
+                {
+                    _discovery = new UdpClient(new IPEndPoint(IPAddress.Any, LobbyPort)) { EnableBroadcast = true };
+                    new Thread(DiscoveryLoop) { IsBackground = true, Name = "discovery" }.Start();
+                }
+                catch (SocketException e) { Program.Log("discovery port busy: " + e.Message); }
             _ticker = new Thread(Tick) { IsBackground = true, Name = "lobby" };
             _ticker.Start();
             Program.Log($"lobby open on TCP/UDP {LobbyPort}");
@@ -207,16 +234,67 @@ namespace HmmRevive.Launcher
         private bool Drafting => _draft != null; // running or done: the teams are locked
         private int BotsOn(string team) => Math.Max(0, Math.Min(Teams[team].Bots, TeamSize - Humans(team)));
 
-        public Member Join(string name, string version, IEnumerable<string> builds, bool isHost, out string error)
+        /// <summary>Requires this password to join (null or empty removes it). The host's own seat never asks for it.</summary>
+        public void SetPassword(string password)
+        {
+            lock (_gate) _password = password ?? "";
+        }
+
+        public bool PasswordRequired { get { lock (_gate) return _password.Length > 0; } }
+
+        /// <summary>Changes who can find the lobby; false for anything but "public" or "private".</summary>
+        public bool SetVisibility(string visibility)
+        {
+            if (visibility != "public" && visibility != "private") return false;
+            lock (_gate)
+            {
+                Visibility = visibility;
+                Changed();
+            }
+            return true;
+        }
+
+        /// <summary>Makes this a cloud lobby with a remote host: the bearer of this token is the host (null removes it).</summary>
+        public void SetHostToken(string token) { _hostToken = string.IsNullOrEmpty(token) ? null : token; }
+
+        // The token counts only in the Authorization header: URLs and bodies end up in logs and histories.
+        private bool IsHostRequest(Request r)
+        {
+            string token = _hostToken, header = r.Header("Authorization");
+            if (token == null || header == null || !header.StartsWith("Bearer ", StringComparison.Ordinal)) return false;
+            return SamePassword(header.Substring(7).Trim(), token);
+        }
+
+        // Compares in time that does not depend on how many leading characters match.
+        private static bool SamePassword(string a, string b)
+        {
+            byte[] x = Encoding.UTF8.GetBytes(a ?? ""), y = Encoding.UTF8.GetBytes(b ?? "");
+            int diff = x.Length ^ y.Length;
+            for (int i = 0; i < Math.Min(x.Length, y.Length); i++) diff |= x[i] ^ y[i];
+            return diff == 0;
+        }
+
+        public Member Join(string name, string version, IEnumerable<string> builds, bool isHost, out string error, string password = null)
         {
             error = null;
             name = Settings.CleanName(name);
             lock (_gate)
             {
                 if (_closed) { error = "The lobby is closed."; return null; }
+                if (!isHost && _password.Length > 0)
+                {
+                    if (string.IsNullOrEmpty(password)) { error = "This lobby needs a password."; return null; }
+                    if (!SamePassword(password, _password)) { error = "Wrong password."; return null; }
+                }
                 if (name == null) { error = "Pick a player name first (letters and digits)."; return null; }
                 if (version != Program.Version) { error = $"The host runs HMM Revive {Program.Version} and you have {version}. Everyone needs the same version."; return null; }
                 if (!(builds ?? new[] { Builds.Steam }).Contains(Build)) { error = $"This lobby plays {Builds.Label(Build)}, and that game copy isn't set up on your PC."; return null; }
+                if (isHost) // the host seat is single: a host coming back under another name takes over the old one
+                    foreach (Member h in _members.Where(x => x.IsHost && !x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).ToList())
+                    {
+                        _members.Remove(h);
+                        SeatLeft(h);
+                    }
                 Member old = _members.FirstOrDefault(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
                 if (old != null)
                 {
@@ -407,10 +485,12 @@ namespace HmmRevive.Launcher
         {
             if (Phase == "draft") return "The draft isn't over yet.";
             if (Phase != "lobby") return "A match is already running.";
+            string game = ServerGame()?.Blocker(); // before the game check below: a downloading server has no game yet
+            if (game != null) return game;
             if (!Players.Any()) return _members.Count == 0 ? "Nobody is in the lobby." : "No players yet: someone has to join a team.";
             foreach (string t in new[] { "blue", "red" })
                 if (Humans(t) + BotsOn(t) == 0) return $"The {(t == "blue" ? "Blue" : "Red")} team is empty: add a bot or a player.";
-            if (!Builds.Ready(Build)) return "The game isn't set up on the host's PC.";
+            if (!BuildReady(Build)) return "The game isn't set up on the host's PC.";
             return null;
         }
 
@@ -539,7 +619,7 @@ namespace HmmRevive.Launcher
             Phase = "starting";
             Message = "Starting the match server...";
             Changed();
-            try { Game.StartServer(o); }
+            try { StartServerHook(o); }
             catch (Exception e)
             {
                 Phase = "lobby";
@@ -563,64 +643,95 @@ namespace HmmRevive.Launcher
             return cars.All(c => c == "default") ? "" : string.Join(",", cars);
         }
 
-        // Once a second: drop members whose launcher went quiet, run the auto-start countdown, follow the server.
+        // Twice a second: drop members whose launcher went quiet, run the auto-start countdown, follow the server and the
+        // game download of a cloud lobby.
         private void Tick()
         {
             while (!_closed)
             {
                 Thread.Sleep(500);
-                lock (_gate)
+                Step(DateTime.UtcNow);
+            }
+        }
+
+        /// <summary>One pass of the lobby's clock (the ticker calls it; tests call it with their own time).</summary>
+        internal void Step(DateTime now)
+        {
+            lock (_gate)
+            {
+                FollowGameDownload(now);
+                // Players in a match keep their seat for a reconnect; a watching spectator whose launcher is gone for a
+                // minute gives the seat to whoever wants it (that launcher closes its game when it sees it's out).
+                foreach (Member m in _members.Where(x => !x.IsHost && (now - x.Seen).TotalSeconds > (!x.InMatch ? 20 : x.Team == Spectator ? 60 : double.MaxValue)).ToList())
                 {
-                    DateTime now = DateTime.UtcNow;
-                    // Players in a match keep their seat for a reconnect; a watching spectator whose launcher is gone for a
-                    // minute gives the seat to whoever wants it (that launcher closes its game when it sees it's out).
-                    foreach (Member m in _members.Where(x => !x.IsHost && (now - x.Seen).TotalSeconds > (!x.InMatch ? 20 : x.Team == Spectator ? 60 : double.MaxValue)).ToList())
-                    {
-                        _members.Remove(m);
-                        SeatLeft(m);
-                        Message = $"{m.Name} lost connection to the lobby.";
-                        ChatAdd(m.Name, m.Team, "lost", true);
-                        Changed();
-                    }
-                    if (_seatsFreeing.RemoveAll(t => t <= now) > 0) Changed(); // a spectator seat is free again
-                    if (Phase == "draft" && _draft.TurnEnds != null)
-                    {
-                        int left = (int)Math.Ceiling((_draft.TurnEnds.Value - now).TotalSeconds);
-                        if (left != _draftSecondsShown) { _draftSecondsShown = left; Changed(); } // members' turn clocks tick
-                    }
-                    if (Phase == "draft" && _draft.TimedOut)
-                    {
-                        string team = _draft.Current.Team == "blue" ? "Blue" : "Red";
-                        _draft.Fill(_rng);
-                        Message = $"Time's up: the {team} team's turn was completed at random.";
-                        DraftAdvance();
-                        Changed();
-                    }
-                    if (Phase == "lobby")
-                    {
-                        bool allReady = Players.Any() && Players.All(x => x.Ready) && CantStart() == null;
-                        if (AutoStart && allReady && _countdownEnd == null) { _countdownEnd = now.AddSeconds(3); Changed(); }
-                        else if ((!AutoStart || !allReady) && _countdownEnd != null) { _countdownEnd = null; Changed(); }
-                        if (_countdownEnd != null && now >= _countdownEnd) Go();
-                    }
-                    else if (Phase == "starting" && Game.ServerListening(GamePort))
-                    {
-                        Phase = "playing";
-                        _matchStarted = true;
-                        Message = "Match running. Your game is starting.";
-                        Changed();
-                    }
-                    else if ((Phase == "starting" || Phase == "playing") && !Game.Running(Game.Server))
-                    {
-                        Phase = "lobby";
-                        if (!Message.StartsWith("The host stopped"))
-                            Message = _matchStarted ? "Match over. Get ready for the next one!" : "The match server stopped before the match began.";
-                        foreach (Member m in _members) { m.InMatch = false; m.Ready = false; m.Seen = now; }
-                        _draft = null; // every match gets its own draft
-                        _seatsFreeing.Clear();
-                        Changed();
-                    }
+                    _members.Remove(m);
+                    SeatLeft(m);
+                    Message = $"{m.Name} lost connection to the lobby.";
+                    ChatAdd(m.Name, m.Team, "lost", true);
+                    Changed();
                 }
+                if (_seatsFreeing.RemoveAll(t => t <= now) > 0) Changed(); // a spectator seat is free again
+                if (Phase == "draft" && _draft.TurnEnds != null)
+                {
+                    int left = (int)Math.Ceiling((_draft.TurnEnds.Value - now).TotalSeconds);
+                    if (left != _draftSecondsShown) { _draftSecondsShown = left; Changed(); } // members' turn clocks tick
+                }
+                if (Phase == "draft" && _draft.TimedOut)
+                {
+                    string team = _draft.Current.Team == "blue" ? "Blue" : "Red";
+                    _draft.Fill(_rng);
+                    Message = $"Time's up: the {team} team's turn was completed at random.";
+                    DraftAdvance();
+                    Changed();
+                }
+                if (Phase == "lobby")
+                {
+                    bool allReady = Players.Any() && Players.All(x => x.Ready) && CantStart() == null;
+                    if (AutoStart && allReady && _countdownEnd == null) { _countdownEnd = now.AddSeconds(CountdownSeconds); Changed(); }
+                    else if ((!AutoStart || !allReady) && _countdownEnd != null) { _countdownEnd = null; Changed(); }
+                    if (_countdownEnd != null && now >= _countdownEnd) Go();
+                }
+                else if (Phase == "starting" && Game.ServerListening(GamePort))
+                {
+                    Phase = "playing";
+                    _matchStarted = true;
+                    Message = "Match running. Your game is starting.";
+                    Changed();
+                }
+                else if ((Phase == "starting" || Phase == "playing") && !Game.Running(Game.Server))
+                {
+                    Phase = "lobby";
+                    if (!Message.StartsWith("The host stopped"))
+                        Message = _matchStarted ? "Match over. Get ready for the next one!" : "The match server stopped before the match began.";
+                    foreach (Member m in _members) { m.InMatch = false; m.Ready = false; m.Seen = now; }
+                    _draft = null; // every match gets its own draft
+                    _seatsFreeing.Clear();
+                    Changed();
+                }
+            }
+        }
+
+        // A cloud lobby's game download: members see every change; a failure is announced and closes the lobby a minute later.
+        private void FollowGameDownload(DateTime now)
+        {
+            GameDownload g = ServerGame();
+            string line = g?.Line;
+            if (line != _serverGameLine)
+            {
+                _serverGameLine = line;
+                if (g != null && g.Failed && _gameFailedAt == null)
+                {
+                    _gameFailedAt = now;
+                    _countdownEnd = null;
+                    Message = $"The server couldn't get the game ({g.Reason}). This lobby closes in {GameFailedCloseSeconds} seconds: create a new one.";
+                    Program.Log("game download failed: " + g.Reason);
+                }
+                Changed();
+            }
+            if (_gameFailedAt != null && !_closeAsked && (now - _gameFailedAt.Value).TotalSeconds >= GameFailedCloseSeconds)
+            {
+                _closeAsked = true;
+                ThreadPool.QueueUserWorkItem(_ => CloseRequested?.Invoke());
             }
         }
 
@@ -660,6 +771,10 @@ namespace HmmRevive.Launcher
                     ["version"] = Program.Version,
                     ["build"] = Build,
                     ["phase"] = Phase,
+                    ["visibility"] = Visibility,
+                    ["passwordRequired"] = _password.Length > 0,
+                    ["cloud"] = Cloud,
+                    ["region"] = Region,
                     ["message"] = Message,
                     ["arena"] = Arena,
                     ["ballSpeed"] = BallSpeed,
@@ -677,6 +792,7 @@ namespace HmmRevive.Launcher
                     ["nextIsDraft"] = NeedsDraft,
                     ["countdown"] = _countdownEnd == null ? -1 : Math.Max(0, (int)Math.Ceiling((_countdownEnd.Value - DateTime.UtcNow).TotalSeconds)),
                     ["cantStart"] = CantStart(),
+                    ["serverGame"] = ServerGame()?.Json(),
                     ["gamePort"] = GamePort,
                     ["match"] = _matchNumber,
                     ["teams"] = teams,
@@ -693,6 +809,12 @@ namespace HmmRevive.Launcher
             }
         }
 
+        /// <summary>People whose launcher talked to the lobby in the last <paramref name="seconds"/> (the host included): who is really here.</summary>
+        public int ConnectedMembers(int seconds = 20)
+        {
+            lock (_gate) return _members.Count(m => (DateTime.UtcNow - m.Seen).TotalSeconds <= seconds);
+        }
+
         /// <summary>Short description for the match list (HTTP /lobby/info and the discovery reply).</summary>
         public Dictionary<string, object> Info()
         {
@@ -705,6 +827,10 @@ namespace HmmRevive.Launcher
                     ["version"] = Program.Version,
                     ["build"] = Build,
                     ["phase"] = Phase,
+                    ["visibility"] = Visibility,
+                    ["passwordRequired"] = _password.Length > 0,
+                    ["cloud"] = Cloud,
+                    ["region"] = Region,
                     ["players"] = Players.Count(),
                     ["spectatorSeats"] = SpectatorsOn ? Math.Max(0, SpectatorSlots - Humans(Spectator) - Freeing) : 0,
                     ["draft"] = DraftEnabled,
@@ -717,8 +843,9 @@ namespace HmmRevive.Launcher
 
         // ---- network ----
 
-        private Response Handle(Request r)
+        internal Response Handle(Request r)
         {
+            if (r.Path.StartsWith("/lobby/host/", StringComparison.Ordinal)) return HandleHost(r);
             switch (r.Path)
             {
                 case "/lobby/info":
@@ -727,9 +854,10 @@ namespace HmmRevive.Launcher
                 {
                     if (r.Method != "POST") return null;
                     var d = Js.Read(r.Body);
-                    Member m = Join(d.Str("name"), d.Str("version"), d.ContainsKey("builds") ? d.List("builds").Select(o => o?.ToString()) : null, false, out string error);
-                    Program.Log($"join from {r.Remote} as {d.Str("name")}: {error ?? "ok"}");
-                    return m == null ? Response.Error(error, 409) : Response.Json(new Dictionary<string, object> { ["token"] = m.Token, ["id"] = m.Id });
+                    bool asHost = IsHostRequest(r); // a valid host token makes this member the host (and reclaims its seat)
+                    Member m = Join(d.Str("name"), d.Str("version"), d.ContainsKey("builds") ? d.List("builds").Select(o => o?.ToString()) : null, asHost, out string error, d.Str("password"));
+                    Program.Log($"join from {r.Remote} as {d.Str("name")}{(asHost ? " (host)" : "")}: {error ?? "ok"}");
+                    return m == null ? Response.Error(error, 409) : Response.Json(new Dictionary<string, object> { ["token"] = m.Token, ["id"] = m.Id, ["host"] = asHost });
                 }
                 case "/lobby/state":
                 {
@@ -762,6 +890,31 @@ namespace HmmRevive.Launcher
                     if (r.Method != "POST") return null;
                     Leave(Js.Read(r.Body).Str("token"));
                     return Response.Json(new Dictionary<string, object> { ["ok"] = true });
+            }
+            return null;
+        }
+
+        // The host's controls for a lobby nobody runs locally. Only present when a host token was set; every route needs it.
+        private Response HandleHost(Request r)
+        {
+            if (_hostToken == null) return null;
+            if (!IsHostRequest(r)) return Response.Error("Only the host can do that.", 403);
+            if (r.Method != "POST") return null;
+            var d = Js.Read(r.Body);
+            Func<string, Response> result = why => why == null ? Response.Json(new Dictionary<string, object> { ["ok"] = true }) : Response.Error(why);
+            switch (r.Path.Substring("/lobby/host/".Length))
+            {
+                case "configure": Configure(d); return result(null);
+                case "start": return result(Start());
+                case "stop": Stop(); return result(null);
+                case "kick": Kick(d.Str("id")); return result(null);
+                case "move": return result(MoveMember(d.Str("id"), d.Str("team")));
+                case "swap": return result(SwapMembers(d.Str("a"), d.Str("b")));
+                case "draft-reset": ResetDraft(); return result(null);
+                case "visibility": return result(SetVisibility(d.Str("visibility")) ? null : "Visibility must be public or private.");
+                case "close":
+                    ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CloseRequested?.Invoke(); }); // after this answer is sent
+                    return result(null);
             }
             return null;
         }

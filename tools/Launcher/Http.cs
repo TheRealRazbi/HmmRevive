@@ -32,6 +32,27 @@ namespace HmmRevive.Launcher
     }
 
     /// <summary>
+    /// Protection for a server that strangers can reach (the cloud lobby). The defaults are the old behavior: a 1 MiB body
+    /// cap and nothing else, which is what the local UI and LAN lobbies keep using.
+    /// </summary>
+    public class HttpLimits
+    {
+        /// <summary>Largest request body accepted; a bigger one gets the connection closed without the handler running.</summary>
+        public int MaxBodyBytes = 1 << 20;
+        /// <summary>Most connections served at once (0 = no limit); further ones are closed at accept.</summary>
+        public int MaxConnections;
+        /// <summary>Most requests per client per second (0 = no limit); the next one gets 429.</summary>
+        public int RequestsPerSecond;
+        /// <summary>
+        /// The server sits behind one proxy that appends the client address to X-Forwarded-For: count the last entry of
+        /// that header as the client. Off, the header is ignored because anyone can send it.
+        /// </summary>
+        public bool TrustForwardedFor;
+        /// <summary>Milliseconds clock for the rate limit (tests inject their own).</summary>
+        public Func<long> NowMs = () => System.Diagnostics.Stopwatch.GetTimestamp() * 1000 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    /// <summary>
     /// Minimal HTTP/1.1 server on a TcpListener. HttpListener (http.sys) would need an admin URL reservation to listen on
     /// anything but localhost, and the lobby must be reachable from other players.
     /// </summary>
@@ -39,12 +60,18 @@ namespace HmmRevive.Launcher
     {
         private readonly TcpListener _listener;
         private readonly Func<Request, Response> _handler;
+        private readonly HttpLimits _limits;
+        private readonly Dictionary<string, Queue<long>> _recent = new Dictionary<string, Queue<long>>();
+        private int _active;
         public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+        /// <summary>Connections being served right now.</summary>
+        public int ActiveConnections => Volatile.Read(ref _active);
 
-        public HttpServer(IPAddress address, int port, Func<Request, Response> handler)
+        public HttpServer(IPAddress address, int port, Func<Request, Response> handler, HttpLimits limits = null)
         {
             _listener = new TcpListener(address, port);
             _handler = handler;
+            _limits = limits ?? new HttpLimits();
         }
 
         /// <summary>Starts listening; false when the port is taken.</summary>
@@ -68,6 +95,13 @@ namespace HmmRevive.Launcher
                 TcpClient c;
                 try { c = _listener.AcceptTcpClient(); }
                 catch { return; }
+                // Over the cap the connection is dropped before it costs a thread (cloud lobby: strangers can connect).
+                if (Interlocked.Increment(ref _active) > (_limits.MaxConnections > 0 ? _limits.MaxConnections : int.MaxValue))
+                {
+                    Interlocked.Decrement(ref _active);
+                    try { c.Close(); } catch { }
+                    continue;
+                }
                 // A thread per connection, not the pool: lobby long polls hold theirs for 15 s, and the pool only adds
                 // threads slowly past the CPU count, which would stall the lobby with 8 players on a 4-core host.
                 new Thread(() => Serve(c)) { IsBackground = true, Name = "http-conn" }.Start();
@@ -82,9 +116,14 @@ namespace HmmRevive.Launcher
                 {
                     client.ReceiveTimeout = 10000;
                     NetworkStream s = client.GetStream();
-                    Request req = Read(s);
+                    Request req = Read(s, _limits.MaxBodyBytes);
                     if (req == null) return;
                     req.Remote = ((IPEndPoint)client.Client.RemoteEndPoint).Address;
+                    if (_limits.RequestsPerSecond > 0 && !AllowRequest(ClientKey(req)))
+                    {
+                        Write(s, Response.Error("Too many requests. Slow down.", 429));
+                        return;
+                    }
                     Response res;
                     try { res = _handler(req) ?? Response.Error("not found", 404); }
                     catch (Exception e)
@@ -97,10 +136,47 @@ namespace HmmRevive.Launcher
                 catch (IOException) { }
                 catch (SocketException) { }
                 catch (Exception e) { Program.Log("http: " + e.Message); }
+                finally { Interlocked.Decrement(ref _active); }
             }
         }
 
-        private static Request Read(Stream s)
+        /// <summary>Who a request counts against: the forwarded client when the proxy is trusted, else the peer address.</summary>
+        private string ClientKey(Request req)
+        {
+            if (_limits.TrustForwardedFor)
+            {
+                string xff = req.Header("X-Forwarded-For");
+                if (!string.IsNullOrWhiteSpace(xff))
+                {
+                    string last = xff.Substring(xff.LastIndexOf(',') + 1).Trim(); // the entry the proxy appended
+                    if (last.Length > 0) return last;
+                }
+            }
+            return req.Remote?.ToString() ?? "";
+        }
+
+        /// <summary>Sliding one-second window per client.</summary>
+        private bool AllowRequest(string key)
+        {
+            long now = _limits.NowMs();
+            lock (_recent)
+            {
+                if (_recent.Count > 4096)
+                {
+                    var stale = new List<string>();
+                    foreach (var kv in _recent)
+                        if (kv.Value.Count == 0 || now - kv.Value.Peek() >= 1000) stale.Add(kv.Key);
+                    foreach (string k in stale) _recent.Remove(k);
+                }
+                if (!_recent.TryGetValue(key, out Queue<long> q)) _recent[key] = q = new Queue<long>();
+                while (q.Count > 0 && now - q.Peek() >= 1000) q.Dequeue();
+                if (q.Count >= _limits.RequestsPerSecond) return false;
+                q.Enqueue(now);
+                return true;
+            }
+        }
+
+        private static Request Read(Stream s, int maxBody)
         {
             // Headers are ASCII; read byte by byte up to the blank line, then the body by Content-Length.
             var head = new StringBuilder();
@@ -134,7 +210,7 @@ namespace HmmRevive.Launcher
             }
             if (int.TryParse(req.Header("Content-Length"), out int len) && len > 0)
             {
-                if (len > 1 << 20) return null;
+                if (len > maxBody) return null;
                 byte[] body = new byte[len];
                 int got = 0, n;
                 while (got < len && (n = s.Read(body, got, len - got)) > 0) got += n;

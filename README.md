@@ -41,6 +41,23 @@ What changed in each version: [CHANGELOG.md](CHANGELOG.md) (also in the kit as `
 In a match, type `/cars` in chat to list the cars and `/car <name>` to switch, or `/skins` and `/skin <number>` for
 your skin (the change happens while you're dead or between rounds).
 
+### Cloud lobbies (no VPN)
+
+Instead of hosting on your PC, the host can choose **Host, In the cloud**. The lobby then runs on a server created for it:
+nobody needs Radmin, Tailscale or ZeroTier, and the lobby keeps going if the host closes the launcher. The server is deleted a
+few minutes after the last player leaves, or after 3 hours at most.
+
+- **Creating one** needs an *invite key* from whoever runs the cloud. Paste it once in the Host screen's cloud option (it is
+  saved on your PC). Each key may have two cloud lobbies open at once. The host chooses who can find the lobby ("Anyone" lists
+  it in Play, "Only people with the code" does not) and may set a password.
+- **Joining** needs no key. Cloud lobbies appear in **Play** with a cloud badge (and a lock when they ask for a password), or
+  type the lobby's six-character code (for example `a1b2c3`) or its `https://` address in the join box.
+- **Rejoining:** if you close the launcher while your cloud lobby is open, the Host screen offers to take your seat back.
+- **Region:** Brazil, United States or Europe (Madrid); pick the one nearest to most players. A lobby opens in about 70 seconds
+  in Brazil and about two minutes elsewhere; for its first seconds the server is still getting the game ready, which the
+  lobby shows to everyone, and the match starts once it is ready.
+- Everyone needs the same HMM Revive version. Cloud lobbies play the Steam build.
+
 **Security:** the match server and the lobby have no real authentication. Anyone who can reach their ports (UDP 9696
 for the game, TCP/UDP 9697 for the lobby) can join while they run. Share them over Radmin VPN, Tailscale or ZeroTier (the kit
 README shows how to limit Tailscale shared users to those ports), and close the lobby after playing.

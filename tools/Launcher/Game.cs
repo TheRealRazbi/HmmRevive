@@ -245,18 +245,26 @@ namespace HmmRevive.Launcher
             try { return p != null && !p.HasExited; } catch { return false; }
         }
 
-        private static string Quote(string a) => a.IndexOf(' ') >= 0 ? "\"" + a + "\"" : a;
+        // Seams for tests: how a process is spawned and how the game's process tree is killed.
+        internal static Func<ProcessStartInfo, Process> Spawn = psi => Process.Start(psi);
+        internal static Action<LaunchCommand> RunToEnd = c =>
+        {
+            using (Process p = Process.Start(new ProcessStartInfo(c.FileName, c.Arguments) { UseShellExecute = false, CreateNoWindow = true }))
+                p?.WaitForExit(5000);
+        };
 
         private static Process Start(string build, List<string> args, bool hidden)
         {
-            var psi = new ProcessStartInfo(Builds.GameExe(build), string.Join(" ", args.Select(Quote)))
+            // Platform decides the program: HMM.exe on Windows, Wine on a virtual display on Linux (cloud lobbies).
+            LaunchCommand cmd = Platform.GameCommand(Builds.GameExe(build), args, Builds.Instance(build));
+            var psi = new ProcessStartInfo(cmd.FileName, cmd.Arguments)
             {
-                WorkingDirectory = Builds.Instance(build),
+                WorkingDirectory = cmd.WorkingDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = hidden,
             };
             if (hidden) psi.WindowStyle = ProcessWindowStyle.Hidden;
-            Process p = Process.Start(psi);
+            Process p = Spawn(psi);
             Program.Log($"started {psi.FileName} pid={p.Id}: {psi.Arguments}");
             return p;
         }
@@ -357,7 +365,7 @@ namespace HmmRevive.Launcher
                 "[Game]", "PlayerCount=" + o.Players, "ArenaIndex=" + o.Arena, "RedTeamBotsCount=" + o.RedBots, "BluTeamBotsCount=" + o.BluBots,
                 "AllPlayersOnBluTeam=false", "[Server]", "Port=" + o.Port, "EndConfig" });
             Server = Start(o.Build, a, true);
-            try { Server.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+            try { Server.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { } // not allowed everywhere (Linux)
             return Server;
         }
 
@@ -380,8 +388,43 @@ namespace HmmRevive.Launcher
 
         public static void StopServer()
         {
-            if (Running(Server)) { try { Server.Kill(); Server.WaitForExit(3000); } catch { } }
+            if (Running(Server))
+            {
+                try
+                {
+                    // Linux: the game is Wine and a virtual display under a process group of its own; kill the group,
+                    // or UDP 9696 stays bound by the children. Windows: killing the one process is enough.
+                    LaunchCommand tree = Platform.KillTreeCommand(Server.Id);
+                    if (tree != null) RunToEnd(tree);
+                    else Server.Kill();
+                    Server.WaitForExit(3000);
+                }
+                catch { }
+            }
             Server = null;
+        }
+
+        /// <summary>How many game clients the match server has right now, from the last "WATCH server:clients=N" line the mod wrote.</summary>
+        public static int ServerClients(int port, string build = null) =>
+            ClientsInLog(Path.Combine(Builds.Instance(build ?? Builds.Steam), $"hmmrevive-server-{port}.log"));
+
+        /// <summary>Reads the end of the log without locking it (the game is writing); 0 when it cannot be read.</summary>
+        internal static int ClientsInLog(string path)
+        {
+            try
+            {
+                using (var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    long take = Math.Min(f.Length, 64 * 1024);
+                    f.Seek(-take, SeekOrigin.End);
+                    var buf = new byte[take];
+                    int got = 0, n;
+                    while (got < take && (n = f.Read(buf, got, (int)take - got)) > 0) got += n;
+                    var m = Regex.Matches(Encoding.UTF8.GetString(buf, 0, got), @"WATCH server:clients=(\d+)");
+                    return m.Count == 0 ? 0 : int.Parse(m[m.Count - 1].Groups[1].Value);
+                }
+            }
+            catch { return 0; }
         }
 
         /// <summary>True once the server listens on its UDP port (it takes ~20-30 s to load).</summary>

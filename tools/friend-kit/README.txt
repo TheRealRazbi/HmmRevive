@@ -34,6 +34,16 @@ In a lobby
   - Ball speed: the host sets it in the lobby (0.5x to 3x, 1x = normal), also during the match, or types
     /ballspeed 1.5 in the match chat. /ballspeed alone shows the current speed.
 
+CLOUD LOBBY (no VPN, no PC that has to stay on)
+  - In Host, choose "In the cloud". It needs an invite key from whoever runs the cloud: paste it once where the screen asks
+    (it is saved on your PC). Pick who can find the lobby (Anyone = listed in Play, Only people with the code) and an optional
+    password, and the region (Brazil, United States or Europe: the one nearest to most players), then "Create cloud lobby".
+    It opens in about a minute (two outside Brazil). For its first seconds the server is still getting the game ready: the
+    lobby shows it, and the match starts once it is ready.
+  - Players find it in Play (cloud badge, lock = password) or type its code (like a1b2c3) in the join box. Joining needs no key.
+  - The server is deleted a few minutes after the last player leaves, or after 3 hours. If you close the launcher meanwhile,
+    Host offers "Rejoin your cloud lobby". Everyone needs the same version.
+
 HOST (one person, on a PC that stays on during the match)
   - In HMM-Revive.exe, go to Host and click "Set up firewall" once (Windows asks for admin). It lets players in on
     the game port (UDP 9696) and the lobby port (TCP and UDP 9697), from Tailscale and local networks only
